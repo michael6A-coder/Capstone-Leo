@@ -305,7 +305,7 @@
         <p class="text-slate-400">Please provide the details for your home service request. Our team will review it and contact you to confirm availability, pricing, staff, and any required payment.</p>
 
         <div>
-          <label class="block text-slate-400 mb-1">Full Address</label>
+          <label class="block text-slate-400 mb-1">Venue Address</label>
           <input type="text" x-model="homeServiceForm.address" required placeholder="e.g., 123 Main St, Legazpi City" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
           <p class="text-slate-500 mt-1">Home Service is available only within Albay Province.</p>
         </div>
@@ -317,6 +317,9 @@
             <option>Wedding</option>
             <option>Debut</option>
             <option>Photoshoot</option>
+            <option>Graduation</option>
+            <option>Gala</option>
+            <option>Personal Event</option>
             <option>Group Package</option>
             <option value="Other">Other (Please specify)</option>
           </select>
@@ -327,6 +330,26 @@
           <input type="text" x-model="homeServiceForm.otherEventType" placeholder="e.g., Corporate Event" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
         </div>
 
+        <div>
+          <label class="block text-slate-400 mb-1">Number of Clients</label>
+          <input type="number" min="1" step="1" required x-model="homeServiceForm.clients" placeholder="Enter number of people" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Venue Details (optional)</label>
+          <input type="text" x-model="homeServiceForm.venueDetails" placeholder="Landmark, building, floor, room, or other instructions" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800">
+        </div>
+        <div x-show="homeServiceForm.eventType !== 'Wedding'" class="space-y-2">
+          <p class="font-medium text-white">What Services Do You Need?</p>
+          <p class="text-slate-400">Select all that apply.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <template x-for="service in ['Hair Styling', 'Event Makeup', 'Brow Services', 'Lash Services', 'Hair & Makeup Package']" :key="service">
+              <label class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg p-3 cursor-pointer">
+                <input type="checkbox" x-model="homeServiceForm.services" :value="service" class="accent-gold-500">
+                <span x-text="service" class="text-slate-300"></span>
+              </label>
+            </template>
+          </div>
+        </div>
         <div x-show="homeServiceForm.eventType === 'Wedding'" x-transition x-data="{ expandedPackage: '' }" class="bg-slate-800 border border-luxury-700 p-4 rounded-lg space-y-4">
           <p class="font-semibold text-white uppercase tracking-wider">Select Wedding Package</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -361,6 +384,7 @@
           </div>
           <div x-show="homeServiceForm.weddingPackage" class="bg-slate-900 border border-slate-700 rounded-xl p-4 space-y-2 text-slate-300">
             <p class="font-semibold text-white uppercase tracking-wider mb-3">Package Summary</p>
+            <p class="text-slate-400">The remaining balance shown is after the reservation fee is paid. No payment has been collected with this request.</p>
             <p><strong class="text-slate-500 inline-block w-32">Wedding Package:</strong> <span x-text="'Package ' + homeServiceForm.weddingPackage"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Package Price:</strong> <span x-text="({A:'₱5,000',B:'₱8,000',C:'₱10,000',D:'₱12,000'})[homeServiceForm.weddingPackage]"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Reservation Fee:</strong> <span x-text="homeServiceForm.weddingPackage === 'D' ? '₱2,000' : 'To be confirmed after review.'"></span></p>
@@ -382,15 +406,17 @@
           <label class="block text-slate-400 mb-1">Preferred Time</label>
           <input type="time" x-model="homeServiceForm.preferredTime" required class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
         </div>
-        <p class="text-slate-500 -mt-2">Your preferred date and time are a request only — they are not guaranteed until confirmed by our team.</p>
+        <p class="text-slate-500 -mt-2">Our team will review your preferred date, time, venue, and service requirements. Your request remains Under Review until we contact you and confirm the arrangements. No payment is collected when you submit this request.</p>
 
         <div>
-          <label class="block text-slate-400 mb-1">Additional Details</label>
+          <label class="block text-slate-400 mb-1">Additional Requirements (optional)</label>
           <textarea x-model="homeServiceForm.requests" rows="3" placeholder="e.g., Number of people, specific styles needed..." class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500"></textarea>
         </div>
 
         <div x-show="homeServiceForm.eventType !== 'Wedding'" class="bg-slate-800 border border-luxury-700 p-4 rounded-lg space-y-2 text-slate-300">
           <p class="font-medium text-white">Review Your Request</p>
+          <p><strong class="text-slate-500 inline-block w-28">Clients:</strong> <span x-text="homeServiceForm.clients || '—'"></span></p>
+          <p><strong class="text-slate-500 inline-block w-28">Services:</strong> <span x-text="homeServiceForm.services.join(', ') || '—'"></span></p>
           <p><strong class="text-slate-500 inline-block w-28">Address:</strong> <span x-text="homeServiceForm.address || '—'"></span></p>
           <p><strong class="text-slate-500 inline-block w-28">Event Type:</strong> <span x-text="(homeServiceForm.eventType === 'Other' ? homeServiceForm.otherEventType : homeServiceForm.eventType) || '—'"></span></p>
           <p x-show="homeServiceForm.eventType === 'Wedding' && homeServiceForm.weddingPackage"><strong class="text-slate-500 inline-block w-28">Package:</strong> <span x-text="'Package ' + homeServiceForm.weddingPackage"></span></p>
@@ -510,9 +536,9 @@
        Appointments, booking, reviews, and profile mixins live on their
        own pages. -->
   <script src="../../scripts/customer/dashboard-helpers.js"></script>
-  <script src="../../scripts/customer/dashboard-state.js"></script>
+  <script src="../../scripts/customer/dashboard-state.js?v=home-service-aligned-1"></script>
   <script src="../../scripts/customer/dashboard-notifications.js"></script>
-  <script src="../../scripts/customer/dashboard-home-service.js"></script>
+  <script src="../../scripts/customer/dashboard-home-service.js?v=home-service-aligned-1"></script>
   <script src="../../scripts/customer/dashboard-track-booking.js"></script>
   <script src="../../scripts/customer/dashboard.js"></script>
 </body>

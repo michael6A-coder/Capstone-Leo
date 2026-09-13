@@ -18,6 +18,16 @@ function customerBookingMixin() {
         if (request !== this.reservationQuoteRequest) return false;
         if (!body.success) throw new Error(body.message || 'Unable to calculate Pay Now.');
         this.reservationQuote = body.quote;
+        // A service configured 'No Online Reservation' (Service Menu &
+        // Promos -> Reservation Payment Rule) skips the deposit step --
+        // amountDue is 0, so there's nothing to pay online; auto-lock with
+        // method 'Cash' (already valid for a ₱0 amount, no reference
+        // needed) instead of asking the customer to pick a payment method.
+        if (body.quote.reservationRequirement === 'No Online Reservation') {
+          this.bookingForm.paymentMethod = 'Cash';
+          this.bookingForm.depositReference = '';
+          this.depositLocked = true;
+        }
         return true;
       } catch (error) {
         if (request === this.reservationQuoteRequest) this.pushToast('error', error.message || 'Unable to calculate Pay Now. Please try again.');

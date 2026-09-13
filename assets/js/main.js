@@ -1164,8 +1164,6 @@
       ]
     }
   ];
-  let hsAvailabilityOK = false;
-  let hsAvailabilityChecked = false;
   let hsFeedbackRef = '';
   let hsFeedbackPhone = '';
   const hsRatings = { service: 0, staff: 0 };
@@ -1256,6 +1254,7 @@
   }
 
   function hsSyncWeddingPackages() {
+    document.getElementById('hsOtherEventRow')?.classList.toggle('hidden', document.getElementById('hsEventType').value !== 'Other');
     const isWedding = document.getElementById('hsEventType')?.value === 'Wedding';
     const wasWedding = hsWeddingMode;
     hsWeddingMode = isWedding;
@@ -1271,7 +1270,7 @@
       hsRenderWeddingPackages();
     } else {
       hsSelectedWeddingPackage = null;
-      if (wasWedding) hsSelectedServices = [];
+      if (wasWedding) hsSelectedServices = Array.from(document.querySelectorAll('.hs-svc.border-copper')).map(button => button.dataset.svc);
       document.getElementById('hsWeddingLiveSummary')?.classList.add('hidden');
     }
   }
@@ -1305,8 +1304,8 @@
       if (!document.getElementById('hsTime').value) { showToast('Please select a preferred time'); return; }
       if (!document.getElementById('hsClients').value) { showToast('Please enter the number of clients'); return; }
       if (!document.getElementById('hsVenue').value.trim()) { showToast('Please enter the venue or address'); return; }
-      if (!hsAvailabilityChecked) { showToast('Please check availability for your date and time'); hsCheckAvailability(); return; }
-      if (!hsAvailabilityOK) { showToast('That schedule is unavailable — please choose another date or time'); return; }
+      if (!hsValidateSchedule()) return;
+      if (document.getElementById('hsEventType').value === 'Other' && !document.getElementById('hsOtherEvent').value.trim()) { showToast('Please specify the event type.'); return; }
       hsGo(3);
     } else if (from === 3) {
       if (document.getElementById('hsEventType').value === 'Wedding' && !hsSelectedWeddingPackage) { showToast('Please select a wedding package'); return; }
@@ -1344,31 +1343,19 @@
     return hr + ':' + String(m).padStart(2, '0') + ' ' + ap;
   }
 
-  function hsCheckAvailability() {
+  function hsValidateSchedule() {
     const date = document.getElementById('hsDate').value;
     const time = document.getElementById('hsTime').value;
-    const box = document.getElementById('hsAvailResult');
-    if (!date || !time) { showToast('Select a date and time first'); return; }
-    // Demo rule: Mondays are reserved for salon maintenance
-    const day = new Date(date + 'T00:00:00').getDay();
-    const available = day !== 1;
-    hsAvailabilityOK = available;
-    hsAvailabilityChecked = true;
-    box.classList.remove('hidden');
-    if (available) {
-      box.className = 'mt-4 rounded-xl p-4 text-[13px] leading-relaxed bg-plum/10 border border-plum/25 text-plum';
-      box.innerHTML = '<b>Good news!</b> Your requested schedule is currently available for review.';
-    } else {
-      box.className = 'mt-4 rounded-xl p-4 text-[13px] leading-relaxed bg-copper/12 border border-copper/30 text-copper-dark';
-      box.innerHTML = '<b>The requested schedule is currently unavailable.</b><br>Please select another date or time.';
+    if (!date || !time || new Date(date + 'T' + time + ':00+08:00').getTime() <= Date.now()) {
+      showToast('Please choose a future date and time.');
+      return false;
     }
+    return true;
   }
 
   ['hsDate','hsTime'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
-      hsAvailabilityChecked = false;
-      hsAvailabilityOK = false;
-      document.getElementById('hsAvailResult').classList.add('hidden');
+      if (hsSelectedWeddingPackage) hsFillWeddingSummary('[data-wedding-summary]');
     });
   });
   document.getElementById('hsEventType')?.addEventListener('change', hsSyncWeddingPackages);
@@ -1379,7 +1366,7 @@
     document.getElementById('rvPhone').textContent = document.getElementById('hsPhone').value.trim();
     document.getElementById('rvEmail').textContent = email || '—';
     document.getElementById('rvEmailRow').classList.toggle('hidden', !email);
-    document.getElementById('rvEvent').textContent = document.getElementById('hsEventType').value;
+    document.getElementById('rvEvent').textContent = document.getElementById('hsEventType').value === 'Other' ? document.getElementById('hsOtherEvent').value.trim() : document.getElementById('hsEventType').value;
     document.getElementById('rvDate').textContent = hsFmtDate(document.getElementById('hsDate').value);
     document.getElementById('rvTime').textContent = hsFmtTime(document.getElementById('hsTime').value);
     document.getElementById('rvClients').textContent = document.getElementById('hsClients').value;
@@ -1396,12 +1383,13 @@
   }
 
   function hsSubmit() {
+    if (!hsValidateSchedule()) return;
     const name = document.getElementById('hsName').value.trim();
     const phone = document.getElementById('hsPhone').value.trim();
     const email = document.getElementById('hsEmail').value.trim();
     const venue = document.getElementById('hsVenue').value.trim();
     const venueDetails = document.getElementById('hsVenueDetails').value.trim();
-    const eventType = document.getElementById('hsEventType').value;
+    const eventType = document.getElementById('hsEventType').value === 'Other' ? document.getElementById('hsOtherEvent').value.trim() : document.getElementById('hsEventType').value;
     const date = document.getElementById('hsDate').value;
     const time = document.getElementById('hsTime').value;
     const clients = document.getElementById('hsClients').value;
@@ -1419,6 +1407,10 @@
     formData.append('address', venue);
     formData.append('venueDetails', venueDetails);
     formData.append('eventType', eventType);
+    if (document.getElementById('hsEventType').value === 'Wedding') {
+      if (!hsSelectedWeddingPackage) { if (btn) btn.disabled = false; showToast('Please choose a wedding package.'); return; }
+      formData.append('weddingPackage', hsSelectedWeddingPackage.name.slice(-1));
+    }
     formData.append('date', date);
     formData.append('time', time);
     formData.append('clients', clients);
@@ -1458,7 +1450,7 @@
   }
 
   function hsReset() {
-    ['hsName','hsPhone','hsEmail','hsClients','hsDate','hsTime','hsVenue','hsVenueDetails','hsNotes'].forEach(id => {
+    ['hsName','hsPhone','hsEmail','hsClients','hsDate','hsTime','hsVenue','hsVenueDetails','hsNotes','hsOtherEvent'].forEach(id => {
       const el = document.getElementById(id); if (el) el.value = '';
     });
     document.getElementById('hsEventType').value = '';
@@ -1473,8 +1465,6 @@
     document.getElementById('hsAvailResult').classList.add('hidden');
     document.getElementById('hsWeddingLiveSummary')?.classList.add('hidden');
     hsSyncWeddingPackages();
-    hsAvailabilityOK = false;
-    hsAvailabilityChecked = false;
     hsGo(1);
   }
 
@@ -2071,6 +2061,26 @@
       document.getElementById('bookDepositRequired').textContent = formatReservationMoney(body.quote.amountDue);
       document.getElementById('bookPaymentBalance').textContent = formatReservationMoney(body.quote.remainingBalance);
       document.getElementById('bookQuoteError').textContent = '';
+
+      // A service configured 'No Online Reservation' (see Service Menu &
+      // Promos -> Reservation Payment Rule) skips the deposit step entirely
+      // -- the booking is submitted with no payment and confirmed after
+      // admin review, instead of requiring a Cash/GCash/Maya choice for a
+      // ₱0 amount. The backend still records method 'Cash' (already
+      // validated, requires no reference) since amountDue is 0.
+      if (body.quote.reservationRequirement === 'No Online Reservation') {
+        bookDepositInfo = { amount: 0, method: 'Cash', reference: '' };
+        bookDepositLocked = true;
+        document.getElementById('bookDepositForm').classList.add('hidden');
+        const locked = document.getElementById('bookDepositLocked');
+        locked.classList.remove('hidden');
+        locked.classList.add('flex');
+        document.getElementById('bookDepositLockedSummary').textContent = 'No online reservation payment required — confirmed after review.';
+      } else {
+        document.getElementById('bookDepositForm').classList.remove('hidden');
+        document.getElementById('bookDepositLocked').classList.add('hidden');
+        bookDepositLocked = false;
+      }
       return body.quote.amountDue;
     } catch (error) {
       if (request === bookQuoteRequest) document.getElementById('bookQuoteError').textContent = error.message || 'Unable to calculate Pay Now. Please select your services again.';
@@ -2584,5 +2594,7 @@
     renderStaff();
     renderProducts();
     renderWeddingPackages();
+    const homeDate = document.getElementById('hsDate');
+    if (homeDate) homeDate.min = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     hsGo(1, true);
   });

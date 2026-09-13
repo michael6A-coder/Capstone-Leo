@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 $role = $_POST['role'] ?? '';
 $pin = $_POST['pin'] ?? '';
-if (!is_string($role) || !in_array($role, ['Staff', 'Cashier', 'Admin'], true)
+if (!is_string($role) || !in_array($role, ['Staff', 'Cashier', 'Admin', 'Supplier'], true)
     || !is_string($pin) || !preg_match('/^[0-9]{4,12}$/D', $pin)) {
     portalResponse(400, ['success' => false, 'message' => 'Select an account role and enter a 4–12 digit PIN.']);
 }

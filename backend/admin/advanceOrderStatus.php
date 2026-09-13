@@ -7,7 +7,12 @@ require_once '../config/database.php';
 sendCorsHeaders();
 header('Content-Type: application/json');
 
-if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
+// Admin can advance any step (including the final Received -> Completed,
+// which stays Admin-only). Cashier/Staff are also allowed, but only for
+// verifying a physical delivery (Out for Delivery -> Received) -- see the
+// role check further below, once the order's current status is known.
+$role = $_SESSION['user_role'] ?? '';
+if (!isLoggedIn() || !in_array($role, ['Admin', 'Cashier', 'Staff'], true)) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Please log in as an administrator.']);
     exit();
@@ -32,7 +37,7 @@ try {
     $pdo = Database::getInstance();
 
     $stmt = $pdo->prepare('
-        SELECT so.reference_code, so.status, so.quantity, so.inventory_id, i.product_name
+        SELECT so.reference_code, so.status, so.quantity, so.inventory_id, i.product_name, i.branch_id
         FROM supplier_orders so JOIN inventory i ON i.id = so.inventory_id
         WHERE so.id = ?
     ');
@@ -48,6 +53,27 @@ try {
     $nextIndex = min($currentIndex + 1, count($sequence) - 1);
     $nextStatus = $sequence[$nextIndex];
     $referenceCode = $order['reference_code'];
+
+    // Cashier/Staff may only verify a physical delivery (Out for Delivery ->
+    // Received) -- the "receiving" step this endpoint already handles.
+    // Order Placed/Order Confirmed are the Supplier's own actions
+    // (backend/supplier/confirmOrder.php + markOutForDelivery.php), and
+    // Received -> Completed stays an Admin-only finalization.
+    if ($role !== 'Admin' && !($order['status'] === 'Out for Delivery' && $nextStatus === 'Received')) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'You can only verify a delivery that is Out for Delivery.']);
+        exit();
+    }
+
+    // A Cashier can only verify deliveries for their own branch -- same
+    // branch lock every other cashier/*.php endpoint enforces (session
+    // branch_id, never trusted from the client). Staff has no session
+    // branch_id set at login, so this check only applies to Cashier.
+    if ($role === 'Cashier' && (int) $order['branch_id'] !== (int) ($_SESSION['branch_id'] ?? 0)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'This order belongs to a different branch.']);
+        exit();
+    }
 
     $pdo->beginTransaction();
 

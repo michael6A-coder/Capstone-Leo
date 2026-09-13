@@ -9,6 +9,7 @@
 
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/HomeServiceRequest.php';
 require_once '../config/RateLimiter.php';
 
 sendCorsHeaders();
@@ -43,6 +44,7 @@ $date = trim($_POST['date'] ?? '');
 $time = trim($_POST['time'] ?? '');
 $clients = trim($_POST['clients'] ?? '');
 $services = $_POST['services'] ?? [];
+$weddingPackage = trim($_POST['weddingPackage'] ?? '');
 $requests = trim($_POST['requests'] ?? '');
 $agreedToTerms = filter_var($_POST['agreedToTerms'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
@@ -56,7 +58,7 @@ $services = array_values(array_filter(array_map('trim', $services), fn($s) => $s
 // pricing, staff, and whether a reservation payment is required
 // (see backend/admin/updateBookingStatus.php).
 if ($fullName === '' || $contact === '' || $address === '' || $eventType === '' || $date === ''
-    || $time === '' || $clients === '' || empty($services)
+    || $time === '' || $clients === '' || ($eventType !== 'Wedding' && empty($services))
 ) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => "Please fill in your name, contact number, address, event type, preferred date and time, number of clients, and at least one service."]);
@@ -75,29 +77,22 @@ if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     exit();
 }
 
-$parsedDate = DateTime::createFromFormat('Y-m-d', $date);
-if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) {
+$validationError = HomeServiceRequest::validate($date, $time, $eventType, $weddingPackage, $clients, $services);
+if ($validationError !== null) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Please select a valid preferred date.']);
+    echo json_encode(['success' => false, 'message' => $validationError]);
+    exit();
+}
+if (!preg_match('/^09[0-9]{9}$/', $contact)) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Please enter a valid 11-digit mobile number.']);
     exit();
 }
 
 [$firstName, $lastName] = array_pad(explode(' ', $fullName, 2), 2, '');
 
-// preferred_time has its own column; the rest of the extra details don't,
-// so they're folded into the free-text `requests` field -- same pattern
-// submitGuestBooking.php uses for its `notes` column.
-$detailLines = [
-    "Number of clients: {$clients}",
-    'Requested services: ' . implode(', ', $services),
-];
-if ($venueDetails !== '') {
-    $detailLines[] = "Venue details: {$venueDetails}";
-}
-if ($email !== '') {
-    $detailLines[] = "Email: {$email}";
-}
-$fullRequests = implode("\n", $detailLines) . ($requests !== '' ? "\n\n{$requests}" : '');
+$fullRequests = HomeServiceRequest::details($eventType, $weddingPackage, $clients, $services, $venueDetails, $requests);
+if ($email !== '') $fullRequests .= "\nEmail: $email";
 
 try {
     $request_limiter->record();
@@ -137,13 +132,13 @@ try {
     // (see backend/admin/updateBookingStatus.php).
     $ins = $pdo->prepare('
         INSERT INTO home_service_requests (
-            reference_code, customer_id, address, event_type, preferred_date, preferred_time,
-            requests, terms_accepted_at
+            reference_code, customer_id, address, event_type, wedding_package, preferred_date, preferred_time,
+            requests, number_of_clients, terms_accepted_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ');
     $ins->execute([
-        $referenceCode, $customerId, $address, $eventType, $date, $time, $fullRequests,
+        $referenceCode, $customerId, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $date, $time, $fullRequests, (int) $clients,
     ]);
 
     $requestId = $pdo->lastInsertId();

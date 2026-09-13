@@ -34,7 +34,7 @@ function customerHomeServiceMixin() {
     },
     closeHomeServiceModal() {
       this.isHomeServiceModalOpen = false;
-      this.homeServiceForm = { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false };
+      this.homeServiceForm = { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', clients: '', services: [], venueDetails: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false };
     },
 
     submitHomeServiceRequest() {
@@ -48,6 +48,9 @@ function customerHomeServiceMixin() {
       }
       if (!this.homeServiceForm.agreedToTerms) return this.pushToast('error', 'Please agree to the Terms & Conditions to continue.');
 
+      if (!Number.isInteger(Number(this.homeServiceForm.clients)) || Number(this.homeServiceForm.clients) < 1) return this.pushToast('error', 'Please enter the number of clients (at least 1).');
+      if (this.homeServiceForm.eventType !== 'Wedding' && !this.homeServiceForm.services.length) return this.pushToast('error', 'Please select the services you need.');
+      if (new Date(this.homeServiceForm.preferredDate + 'T' + this.homeServiceForm.preferredTime + ':00+08:00').getTime() <= Date.now()) return this.pushToast('error', 'Please choose a future date and time.');
       this.isSubmittingHomeService = true;
 
       const formData = new FormData();
@@ -56,6 +59,9 @@ function customerHomeServiceMixin() {
       formData.append('preferredDate', this.homeServiceForm.preferredDate);
       formData.append('preferredTime', this.homeServiceForm.preferredTime);
       formData.append('requests', this.homeServiceForm.requests);
+      formData.append('clients', this.homeServiceForm.clients);
+      formData.append('venueDetails', this.homeServiceForm.venueDetails);
+      this.homeServiceForm.services.forEach(service => formData.append('services[]', service));
       if (this.homeServiceForm.eventType === 'Wedding') {
         formData.append('weddingPackage', this.homeServiceForm.weddingPackage);
       }
@@ -75,7 +81,7 @@ function customerHomeServiceMixin() {
           this.addNotification('success', `Your home service request ${body.request.id} has been received. We will contact you at ${this.customerProfile.phone} about availability, pricing, staff, and any required payment.`);
           this.isHomeServiceModalOpen = false;
           this.isHomeServiceSuccess = true;
-          this.homeServiceForm = { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false };
+          this.homeServiceForm = { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', clients: '', services: [], venueDetails: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false };
           this.pushToast('success', body.message || 'Home service request submitted!');
         })
         .catch(() => {

@@ -161,6 +161,16 @@ try {
     $_SESSION['user_name'] = $fullName !== '' ? $fullName : ($user['display_name'] ?? '');
     $_SESSION['branch_id'] = $user['branch_id'] !== null ? (int) $user['branch_id'] : null;
 
+    if ($user['role_name'] === 'Supplier') {
+        $stmt = $pdo->prepare('SELECT id FROM suppliers WHERE user_id = ? LIMIT 1');
+        $stmt->execute([$user['id']]);
+        $supplierId = $stmt->fetchColumn();
+        if ($supplierId) {
+            $pdo->prepare('INSERT INTO supplier_action_log (supplier_id, action, details) VALUES (?, "login", ?)')
+                ->execute([$supplierId, 'Logged in from ' . RateLimiter::getIpAddress()]);
+        }
+    }
+
     // The frontend expects a redirect URL, relative to pages/login/login.html
     // (that's the page the browser is on when it follows this redirect).
     // Each role has its own dashboard, so route based on the session role.

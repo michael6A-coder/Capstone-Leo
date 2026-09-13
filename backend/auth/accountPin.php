@@ -16,7 +16,7 @@ try {
     $stmt = $pdo->prepare('SELECT u.id, u.password, u.pin_hash, u.role_id, u.is_active, r.role_name FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?');
     $stmt->execute([$_SESSION['user_id']]);
     $user = $stmt->fetch();
-    if (!$user || !$user['is_active'] || !in_array($user['role_name'], ['Admin', 'Staff', 'Cashier'], true)) {
+    if (!$user || !$user['is_active'] || !in_array($user['role_name'], ['Admin', 'Staff', 'Cashier', 'Supplier'], true)) {
         pinReply(403, ['success' => false, 'message' => 'PIN setup is available for active team accounts only.']);
     }
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {

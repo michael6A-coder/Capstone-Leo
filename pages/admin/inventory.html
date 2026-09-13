@@ -239,6 +239,16 @@
                   <span class="w-full bg-slate-900/60 text-slate-400 text-xs rounded-lg p-2 border border-slate-850 block font-semibold" x-text="getTargetBranchFromOrderForm()"></span>
                 </div>
               </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">Assign to Supplier Account (optional):</label>
+                <select x-model="orderFormSupplierId" class="w-full bg-slate-900 text-slate-300 text-xs rounded-lg p-2 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
+                  <option value="">-- Unassigned (no Supplier Portal login) --</option>
+                  <template x-for="supplier in $store.admin.supplierList.filter(s => s.isActive)" :key="supplier.id">
+                    <option :value="supplier.id" x-text="supplier.companyName"></option>
+                  </template>
+                </select>
+                <p class="text-[10px] text-slate-500 mt-1">Assigning a registered supplier lets them review, confirm, and dispatch this order from their own portal.</p>
+              </div>
               <button type="submit" class="w-full bg-luxury-600 hover:bg-luxury-700 text-white font-bold text-xs py-2 rounded-lg transition duration-150">Submit Order to Supplier</button>
             </form>
 

@@ -13,6 +13,7 @@ function adminInventoryApp() {
 
     orderFormItem: '',
     orderFormQty: 1,
+    orderFormSupplierId: '',
 
     init() {
       adminHighlightNav();
@@ -92,7 +93,8 @@ function adminInventoryApp() {
       if (!this.orderFormItem) return;
       const result = await store.post('placeSupplierOrder.php', {
         itemId: this.orderFormItem,
-        qty: this.orderFormQty
+        qty: this.orderFormQty,
+        supplierId: this.orderFormSupplierId || ''
       });
       if (!result.success) {
         alert(result.message || 'Failed to place supplier order.');
@@ -101,6 +103,7 @@ function adminInventoryApp() {
       await store.refresh();
       this.orderFormItem = '';
       this.orderFormQty = 1;
+      this.orderFormSupplierId = '';
     },
 
     async advanceOrderStatus(orderId) {

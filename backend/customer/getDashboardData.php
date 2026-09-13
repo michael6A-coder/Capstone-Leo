@@ -153,6 +153,7 @@ try {
             reference_code AS id,
             address,
             event_type AS eventType,
+            wedding_package AS weddingPackage,
             DATE_FORMAT(preferred_date, '%Y-%m-%d') AS preferredDate,
             preferred_time AS preferredTime,
             deposit_amount AS depositAmount,
@@ -172,11 +173,8 @@ try {
         $row['id'] = (string) $row['id'];
         $row['depositAmount'] = $row['depositAmount'] !== null ? (float) $row['depositAmount'] : null;
         $row['depositVerified'] = (bool) $row['depositVerified'];
-        // Wedding package choice has no dedicated column -- it's folded
-        // into the `requests` text at submission time (see
-        // submitHomeServiceRequest.php). Pull it back out for display only.
-        $row['weddingPackage'] = null;
-        if ($row['requests'] && preg_match('/Wedding Package ([A-D])/', $row['requests'], $m)) {
+        // Prefer the stored package; retain a fallback for older requests.
+        if (!$row['weddingPackage'] && $row['requests'] && preg_match('/Wedding Package ([A-D])/', $row['requests'], $m)) {
             $row['weddingPackage'] = $m[1];
         }
         return $row;

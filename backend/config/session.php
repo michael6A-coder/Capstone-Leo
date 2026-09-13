@@ -112,6 +112,7 @@ function getRoleDashboardUrl(string $role, string $from = 'login'): string
         'Admin'    => 'pages/admin/dashboard.html',
         'Cashier'  => 'pages/cashier/dashboard.html',
         'Staff'    => 'pages/staff/dashboard.html',
+        'Supplier' => 'pages/supplier/dashboard.html',
     ];
 
     $path = $dashboards[$role] ?? $dashboards['Customer'];

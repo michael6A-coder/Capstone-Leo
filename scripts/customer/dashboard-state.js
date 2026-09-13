@@ -69,7 +69,7 @@ function customerDashboardState() {
     homeServiceRequests: [],
     isHomeServiceModalOpen: false,
     isHomeServiceSuccess: false,
-    homeServiceForm: { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false },
+    homeServiceForm: { address: '', eventType: 'Standard Home Service', otherEventType: '', weddingPackage: '', clients: '', services: [], venueDetails: '', preferredDate: getLocalISODate(), preferredTime: '', requests: '', agreedToTerms: false },
 
     bookingSuccessDetails: null,
     bookingSlotLimit: 2,

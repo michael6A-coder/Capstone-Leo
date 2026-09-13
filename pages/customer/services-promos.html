@@ -454,6 +454,7 @@
                                 <option value="Cash">Cash</option>
                                 <option value="GCash">GCash</option>
                                 <option value="Maya">Maya</option>
+                                <option value="" disabled>Card — Coming Soon</option>
                               </select>
                             </div>
                             <p x-show="bookingForm.paymentMethod === 'Cash'" class="text-slate-500 bg-slate-900 border border-slate-700 rounded-lg p-3">Cash deposits can't be verified remotely — bring the deposit amount to the branch. Your booking remains Waiting for Confirmation until you pay in person and staff verify payment.</p>
@@ -466,8 +467,9 @@
                         </template>
 
                         <div x-show="depositLocked" class="flex items-center justify-between gap-3">
-                          <span class="text-white">Reservation payment: <strong x-text="formatPeso(requiredDeposit()) + ' via ' + bookingForm.paymentMethod + (bookingForm.depositReference ? ' (Ref: ' + bookingForm.depositReference + ')' : '')"></strong></span>
-                          <button type="button" @click="changeDeposit()" class="text-gold-400 font-bold hover:underline shrink-0">Change</button>
+                          <span class="text-white" x-show="reservationQuote?.reservationRequirement === 'No Online Reservation'">No online reservation payment required — confirmed after review.</span>
+                          <span class="text-white" x-show="reservationQuote?.reservationRequirement !== 'No Online Reservation'">Reservation payment: <strong x-text="formatPeso(requiredDeposit()) + ' via ' + bookingForm.paymentMethod + (bookingForm.depositReference ? ' (Ref: ' + bookingForm.depositReference + ')' : '')"></strong></span>
+                          <button type="button" @click="changeDeposit()" x-show="reservationQuote?.reservationRequirement !== 'No Online Reservation'" class="text-gold-400 font-bold hover:underline shrink-0">Change</button>
                         </div>
                       </div>
                     </template>

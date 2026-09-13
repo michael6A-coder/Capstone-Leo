@@ -260,6 +260,20 @@ try {
         ];
     }, $stmt->fetchAll());
 
+    // --- Supplier accounts (registered vendors that can log into the
+    // Supplier Portal -- separate from the free-text inventory.supplier
+    // label, which still works for orders never assigned an account) ---
+    $stmt = $pdo->query('
+        SELECT id, company_name AS companyName, contact_person AS contactPerson, phone, email, address, is_active AS isActive
+        FROM suppliers
+        ORDER BY company_name
+    ');
+    $supplierList = array_map(function ($row) {
+        $row['id'] = (string) $row['id'];
+        $row['isActive'] = (bool) $row['isActive'];
+        return $row;
+    }, $stmt->fetchAll());
+
     $stmt = $pdo->query("
         SELECT i.id, i.product_name AS name, br.branch_key AS branchId,
                i.quantity_on_hand AS stock, i.reorder_level AS minQty,
@@ -281,7 +295,7 @@ try {
 
     $stmt = $pdo->query("
         SELECT so.id, so.reference_code AS referenceCode, i.product_name AS itemName,
-               br.branch_key AS branchId, COALESCE(so.supplier_name, i.supplier) AS supplierName,
+               br.branch_key AS branchId, so.supplier_id AS supplierId, COALESCE(so.supplier_name, i.supplier) AS supplierName,
                so.quantity AS qty, DATE_FORMAT(so.created_at, '%Y-%m-%d') AS orderDate,
                DATE_FORMAT(so.expected_date, '%Y-%m-%d') AS eta, so.status,
                CASE WHEN u.id IS NOT NULL THEN u.display_name ELSE NULL END AS receivedBy
@@ -294,6 +308,7 @@ try {
     $supplierOrders = array_map(function ($row) {
         $row['id'] = (string) $row['id'];
         $row['qty'] = (int) $row['qty'];
+        $row['supplierId'] = $row['supplierId'] !== null ? (string) $row['supplierId'] : null;
         $row['supplierName'] = $row['supplierName'] ?: 'Unspecified Supplier';
         return $row;
     }, $stmt->fetchAll());
@@ -497,6 +512,7 @@ try {
         'bookings' => $bookings,
         'staffList' => $staffList,
         'cashierList' => $cashierList,
+        'supplierList' => $supplierList,
         'inventory' => $inventory,
         'supplierOrders' => $supplierOrders,
         'promotions' => $promotions,

@@ -13,6 +13,7 @@ document.addEventListener('alpine:init', () => {
     bookings: [],
     staffList: [],
     cashierList: [],
+    supplierList: [],
     inventory: [],
     supplierOrders: [],
     promotions: [],
@@ -41,6 +42,7 @@ document.addEventListener('alpine:init', () => {
         this.bookings = data.bookings;
         this.staffList = data.staffList;
         this.cashierList = data.cashierList;
+        this.supplierList = data.supplierList;
         this.inventory = data.inventory;
         this.supplierOrders = data.supplierOrders;
         this.promotions = data.promotions;

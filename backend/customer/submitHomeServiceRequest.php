@@ -16,6 +16,7 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/HomeServiceRequest.php';
 
 sendCorsHeaders();
 header('Content-Type: application/json');
@@ -38,18 +39,17 @@ $preferredDate = trim($_POST['preferredDate'] ?? '');
 $preferredTime = trim($_POST['preferredTime'] ?? '');
 $requests = trim($_POST['requests'] ?? '');
 $weddingPackage = trim($_POST['weddingPackage'] ?? '');
+$clients = trim($_POST['clients'] ?? '');
+$venueDetails = trim($_POST['venueDetails'] ?? '');
+$services = $_POST['services'] ?? [];
+$services = is_array($services) ? array_values(array_filter($services, 'is_string')) : [];
 $agreedToTerms = filter_var($_POST['agreedToTerms'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 // Fixed wedding package pricing. Packages A-C have no fixed reservation
 // fee (confirmed after review); only Package D carries the ₱2,000
 // reservation fee, applied only when that package is chosen -- never
 // auto-applied to A-C.
-$weddingPackages = [
-    'A' => ['price' => 5000, 'fee' => null],
-    'B' => ['price' => 8000, 'fee' => null],
-    'C' => ['price' => 10000, 'fee' => null],
-    'D' => ['price' => 12000, 'fee' => 2000],
-];
+$weddingPackages = HomeServiceRequest::PACKAGES;
 
 if ($address === '' || $preferredDate === '' || $preferredTime === '') {
     http_response_code(400);
@@ -75,21 +75,13 @@ if (!$agreedToTerms) {
     exit();
 }
 
-// The table has no dedicated package/price columns, so the package choice
-// (and its price/reservation fee for Wedding) is folded into the
-// free-text `requests` field, same pattern used elsewhere in this app for
-// details without their own column (see submitGuestHomeService.php).
-$fullRequests = $requests;
-if ($eventType === 'Wedding' && isset($weddingPackages[$weddingPackage])) {
-    $pkg = $weddingPackages[$weddingPackage];
-    $packageLine = "Wedding Package {$weddingPackage} (₱" . number_format($pkg['price']) . ')';
-    if ($pkg['fee'] !== null) {
-        $packageLine .= ' -- Reservation Fee ₱' . number_format($pkg['fee']) . ', Remaining Balance ₱' . number_format($pkg['price'] - $pkg['fee']);
-    } else {
-        $packageLine .= ' -- Reservation Fee: To be confirmed after review.';
-    }
-    $fullRequests = $packageLine . ($fullRequests !== '' ? "\n\n{$fullRequests}" : '');
+$validationError = HomeServiceRequest::validate($preferredDate, $preferredTime, $eventType, $weddingPackage, $clients, $services);
+if ($validationError !== null) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => $validationError]);
+    exit();
 }
+$fullRequests = HomeServiceRequest::details($eventType, $weddingPackage, $clients, $services, $venueDetails, $requests);
 
 try {
     $pdo = Database::getInstance();
@@ -107,12 +99,12 @@ try {
     $ins = $pdo->prepare('
         INSERT INTO home_service_requests (
             customer_id, address, event_type, wedding_package, preferred_date, preferred_time,
-            requests, terms_accepted_at
+            requests, number_of_clients, terms_accepted_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ');
     $ins->execute([
-        $customerId, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $preferredDate, $preferredTime, $fullRequests,
+        $customerId, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $preferredDate, $preferredTime, $fullRequests, (int) $clients,
     ]);
     $requestId = $pdo->lastInsertId();
     $refStmt = $pdo->prepare('SELECT reference_code FROM home_service_requests WHERE id = ?');
@@ -130,7 +122,7 @@ try {
             'weddingPackage' => $eventType === 'Wedding' ? $weddingPackage : null,
             'preferredDate' => $preferredDate,
             'preferredTime' => $preferredTime,
-            'requests' => $requests,
+            'requests' => $fullRequests,
             'depositAmount' => null,
             'paymentMethod' => null,
             'depositReference' => null,

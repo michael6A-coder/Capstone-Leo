@@ -356,6 +356,7 @@
                   <option value="Cash">Cash</option>
                   <option value="GCash">GCash</option>
                   <option value="Maya">Maya</option>
+                  <option value="" disabled>Card — Coming Soon</option>
                 </select>
               </div>
               <div id="bookDepositCashNote" class="hidden text-[12px] text-ink/55 bg-sand-100 border border-bronze/40 rounded-lg p-3">
@@ -2049,6 +2050,8 @@
                     <select id="hsEventType"
                       class="w-full px-4 py-3 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition">
                       <option value="">Choose event type</option>
+                      <option>Standard Home Service</option>
+                      <option>Group Package</option>
                       <option>Wedding</option>
                       <option>Debut</option>
                       <option>Graduation</option>
@@ -2091,26 +2094,13 @@
                   </div>
                 </div>
 
+                <div id="hsOtherEventRow" class="hidden mt-4">
+                  <label for="hsOtherEvent" class="block text-sm mb-2">Please Specify Event</label>
+                  <input id="hsOtherEvent" type="text" class="w-full px-4 py-3 border border-bronze/50 bg-sand-100 rounded-xl text-sm" placeholder="Enter your event type" />
+                </div>
                 <div class="mt-6 rounded-2xl border border-bronze/30 bg-sand-100 p-5">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <b class="text-sm">Check Request Availability</b>
-                      <p class="text-[12px] text-ink/55 mt-1">
-                        We'll review your date, time, services, staff, and
-                        booking slots.
-                      </p>
-                    </div>
-                    <button onclick="hsCheckAvailability()"
-                      class="rounded-full border border-plum text-plum text-[11px] font-bold uppercase tracking-widest px-5 py-2.5 hover:bg-plum hover:text-white transition shrink-0">
-                      Check Availability
-                    </button>
-                  </div>
-                  <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 text-[11px] text-ink/50" id="hsAvailChecklist">
-                    <span class="hs-chk">Requested Date</span><span class="hs-chk">Requested Time</span><span
-                      class="hs-chk">Service Requirements</span><span class="hs-chk">Staff Availability</span><span
-                      class="hs-chk">Booking Slot</span>
-                  </div>
-                  <div id="hsAvailResult" class="hidden mt-4 rounded-xl p-4 text-[13px] leading-relaxed"></div>
+                  <b class="text-sm">Your schedule is a request</b>
+                  <p class="text-[12px] text-ink/55 mt-1">Our team will review your preferred date, time, venue, and service requirements. Your request remains Under Review until we contact you and confirm the arrangements. No payment is collected when you submit this request.</p>
                 </div>
 
                 <div class="flex justify-between mt-7">
@@ -2136,6 +2126,7 @@
                   <div id="hsWeddingPackageGrid" class="grid sm:grid-cols-2 gap-4"></div>
                   <div id="hsWeddingLiveSummary" class="hidden mt-6 rounded-2xl border border-copper/35 bg-copper/10 p-5">
                     <span class="text-[10px] font-bold uppercase tracking-widest text-copper-dark">Package Summary</span>
+                    <p class="text-[12px] text-ink/55 mt-2">The remaining balance shown is after the reservation fee is paid. No payment has been collected with this request.</p>
                     <div class="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
                       <p><span class="text-ink/50">Wedding Package:</span> <b data-wedding-summary="name"></b></p>
                       <p><span class="text-ink/50">Package Price:</span> <b data-wedding-summary="price"></b></p>
@@ -2772,7 +2763,7 @@
     </div>
   </footer>
 
-  <script src="assets/js/main.js"></script>
+  <script src="assets/js/main.js?v=home-service-aligned-1"></script>
 </body>
 
 </html>
