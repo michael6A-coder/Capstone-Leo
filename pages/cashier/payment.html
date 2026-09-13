@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leo Mejillano Salon - Checkout &amp; Payments</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style type="text/tailwindcss">
+        /* Converted from assets/css/cashier.css. Tailwind has no utility for
+           ::-webkit-scrollbar, so that part stays as plain CSS; everything
+           else below uses @apply with normal Tailwind classes. */
+        ::-webkit-scrollbar { @apply w-1.5 h-1.5; }
+        ::-webkit-scrollbar-track { @apply bg-transparent; }
+        ::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
+        ::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
+
+        @keyframes fade-up {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .stagger-item { animation: fade-up 0.4s ease-out both; }
+
+        .card-lift { @apply transition duration-200 hover:-translate-y-0.5 hover:shadow-lg; }
+
+        /* Skeleton placeholder shown while a page's first fetch is in flight. */
+        .skeleton { @apply bg-slate-200 animate-pulse rounded-lg; }
+        .skeleton-line { @apply h-3.5; }
+        .skeleton-row { @apply flex items-center gap-3 p-4; }
+        .skeleton-avatar { @apply w-9 h-9 rounded-full shrink-0; }
+
+        #sidebarNav .nav-item, button, .pay-method-card { @apply transition duration-150; }
+        #sidebarNav .nav-item:active,
+        button:active:not(:disabled) { @apply scale-[0.97]; }
+
+        button[id^="btnClose"] { @apply w-7 h-7 inline-flex items-center justify-center rounded-full transition duration-150; }
+        button[id^="btnClose"]:hover { @apply bg-white/10; }
+
+        .badge-live { @apply animate-pulse; }
+    </style>
+    <link rel="stylesheet" href="../../assets/css/cashier-theme.css">
+</head>
+<body class="bg-gray-100 font-sans antialiased h-screen overflow-hidden flex flex-col">
+
+    <div id="notificationContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none w-80"></div>
+
+    <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 z-10 shrink-0">
+        <div class="flex items-center space-x-4">
+            <a href="dashboard.html" class="text-slate-500 hover:text-slate-900 text-xs font-bold flex items-center space-x-1">
+                <i class="fa-solid fa-arrow-left"></i><span>Back to Queue</span>
+            </a>
+            <div class="h-6 w-px bg-gray-200"></div>
+            <h2 class="font-bold text-xl text-gray-800">Checkout &amp; Payments</h2>
+        </div>
+        <div class="text-right">
+            <p class="text-[10px] text-gray-500 font-medium">System Date & Time</p>
+            <p class="text-xs font-semibold text-gray-700" id="liveClock">--</p>
+        </div>
+    </header>
+
+    <section id="verifyListSection" class="flex-1 p-6 overflow-y-auto bg-gray-50 hidden">
+        <div class="stagger-item bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+            <h3 class="font-bold text-gray-800 text-sm mb-3"><i class="fa-solid fa-money-check-dollar text-amber-500 mr-2"></i>Payments to Verify</h3>
+            <div class="overflow-x-auto text-xs">
+                <table class="w-full text-left text-gray-600">
+                    <thead class="bg-slate-50 text-slate-700 uppercase font-bold border-b border-gray-200">
+                        <tr>
+                            <th class="p-2.5">Reference</th>
+                            <th class="p-2.5">Customer</th>
+                            <th class="p-2.5">Service Total</th>
+                            <th class="p-2.5">Requirement</th>
+                            <th class="p-2.5">Required Amount</th>
+                            <th class="p-2.5">Submitted Amount</th>
+                            <th class="p-2.5">Method</th>
+                            <th class="p-2.5">Transaction Ref</th>
+                            <th class="p-2.5">Submitted</th>
+                            <th class="p-2.5">Payment Status</th>
+                            <th class="p-2.5">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="verifyTableBody" class="divide-y divide-gray-100">
+                        <tr><td class="p-3" colspan="11"><div class="skeleton skeleton-line w-full"></div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <div id="ticketTerminal" class="flex-1 flex overflow-hidden">
+
+        <section class="w-7/12 p-6 overflow-y-auto border-r border-gray-200 flex flex-col bg-gradient-to-b from-white to-gray-50/60">
+            <div class="m-auto w-full max-w-xl">
+            <div id="ticketNotFound" class="hidden bg-white p-8 rounded-xl shadow-sm border border-gray-200 text-center">
+                <i class="fa-solid fa-ticket text-3xl text-gray-300 mb-3"></i>
+                <p class="text-sm font-bold text-slate-700">Ticket not found</p>
+                <p class="text-xs text-gray-400 mt-1">This booking reference could not be located in the active queue.</p>
+                <a href="dashboard.html" class="inline-block mt-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg">Return to Queue</a>
+            </div>
+
+            <div id="ticketSummaryCard" class="stagger-item hidden bg-white p-6 rounded-2xl shadow-sm border border-gray-200 space-y-5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <span class="text-[9px] font-bold tracking-wider uppercase text-slate-400">Client</span>
+                        <h3 id="ticketClientName" class="font-black text-xl text-slate-800 capitalize">-</h3>
+                        <p id="ticketClientPhone" class="text-xs text-gray-400">-</p>
+                    </div>
+                    <span id="ticketStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">-</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="card-lift bg-slate-50 rounded-lg p-3">
+                        <p class="text-[10px] font-bold uppercase text-gray-400"><i class="fa-solid fa-shop mr-1 text-amber-500"></i>Branch</p>
+                        <p id="ticketBranchName" class="font-bold text-slate-800 mt-0.5">-</p>
+                    </div>
+                    <div class="card-lift bg-slate-50 rounded-lg p-3">
+                        <p class="text-[10px] font-bold uppercase text-gray-400"><i class="fa-solid fa-user-tie mr-1 text-amber-500"></i>Assigned Stylist</p>
+                        <p id="ticketStaffName" class="font-bold text-slate-800 mt-0.5 capitalize">-</p>
+                    </div>
+                </div>
+
+                <div>
+                    <p class="text-[10px] font-bold uppercase text-gray-400 mb-1.5"><i class="fa-solid fa-scissors mr-1 text-amber-500"></i>Booked Services</p>
+                    <div id="ticketServices" class="flex flex-wrap gap-1.5 bg-slate-50 rounded-lg p-3 min-h-[2.75rem]">-</div>
+                </div>
+
+                <div id="workflowActionBlock" class="bg-slate-50 border border-gray-200 rounded-xl p-4">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3"><i class="fa-solid fa-sliders mr-1 text-amber-500"></i>Service Progress</span>
+
+                    <div class="grid grid-cols-3 gap-1.5">
+                        <div class="progress-seg h-1.5 rounded-full bg-gray-200 transition-colors duration-300" data-seg="0"></div>
+                        <div class="progress-seg h-1.5 rounded-full bg-gray-200 transition-colors duration-300" data-seg="1"></div>
+                        <div class="progress-seg h-1.5 rounded-full bg-gray-200 transition-colors duration-300" data-seg="2"></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1.5 mt-1.5 mb-4">
+                        <span class="progress-seg-label text-[9px] font-semibold text-gray-400 text-center transition-colors duration-300" title="Confirmed with deposit via the Appointments page's Admit Client action">Confirmed</span>
+                        <span class="progress-seg-label text-[9px] font-semibold text-gray-400 text-center transition-colors duration-300">In Progress</span>
+                        <span class="progress-seg-label text-[9px] font-semibold text-gray-400 text-center transition-colors duration-300">Completed</span>
+                    </div>
+
+                    <button type="button" id="btnWorkflowAction" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 px-3 rounded-lg text-xs transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-scissors"></i>
+                        <span>Start Service</span>
+                    </button>
+                    <div id="serviceCompletedNotice" class="hidden bg-emerald-50 border border-emerald-200 rounded-lg py-2.5 px-3 text-xs font-bold text-emerald-800 items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-circle-check"></i>
+                        <span>Service Completed &mdash; Ready for Payment</span>
+                    </div>
+                </div>
+
+                <div id="alreadyPaidNotice" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 items-center space-x-2">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>This booking has already been paid.</span>
+                </div>
+            </div>
+            </div>
+        </section>
+
+        <section class="stagger-item w-5/12 bg-white flex flex-col justify-between shadow-2xl relative z-0">
+            <div class="p-4 border-b border-gray-200 bg-slate-50 flex justify-between items-start">
+                <div>
+                    <span class="text-[9px] font-bold tracking-wider uppercase text-slate-400">Current Invoice</span>
+                    <h3 id="invoiceIdDisplay" class="font-black text-lg text-slate-800">-</h3>
+                </div>
+                <div class="text-right">
+                    <span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded">Client Details</span>
+                    <p id="customerNameDisplay" class="text-xs font-bold text-slate-700 mt-1 capitalize">No Client Selected</p>
+                </div>
+            </div>
+
+            <div class="flex-1 p-4 overflow-y-auto space-y-4">
+                <div class="flex justify-between items-center text-[10px] font-bold uppercase text-slate-400 tracking-wider pb-1 border-b border-slate-100">
+                    <span>Availed Item / Service</span>
+                    <span>Total Price</span>
+                </div>
+                <div id="cartItemsContainer" class="space-y-3 divide-y divide-gray-100 max-h-56 overflow-y-auto pr-1">
+                    <p class="text-xs text-gray-400 text-center py-8 italic">Loading transaction parameters&hellip;</p>
+                </div>
+                <div class="pt-2 border-t border-dashed border-gray-200">
+                    <button id="btnSellProduct" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 px-4 rounded-xl shadow-sm flex items-center justify-center space-x-2 text-xs transition-all disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-tags"></i>
+                        <span>Add Retail Product to Sale</span>
+                    </button>
+                </div>
+
+                <div id="tipSection" class="border-t border-dashed border-gray-200 pt-3">
+                    <div class="bg-amber-50/50 border border-amber-200/60 rounded-xl p-2.5">
+                        <label class="block text-[10px] font-bold text-amber-900 mb-1"><i class="fa-solid fa-hand-holding-dollar mr-1"></i> Staff Tip Allocation (Cash only)</label>
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button type="button" data-tip="50" class="tip-btn bg-white border border-amber-300 text-amber-800 text-xs font-bold py-1 rounded-lg hover:bg-amber-100 transition-all">₱50</button>
+                            <button type="button" data-tip="100" class="tip-btn bg-white border border-amber-300 text-amber-800 text-xs font-bold py-1 rounded-lg hover:bg-amber-100 transition-all">₱100</button>
+                            <button type="button" data-tip="200" class="tip-btn bg-white border border-amber-300 text-amber-800 text-xs font-bold py-1 rounded-lg hover:bg-amber-100 transition-all">₱200</button>
+                            <input id="customTipInput" type="number" min="0" placeholder="Other" class="bg-white border border-amber-300 text-slate-800 text-xs font-bold py-1 px-1 rounded-lg text-center focus:outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="cashSection" class="border-t border-dashed border-gray-200 pt-3 hidden">
+                    <div class="bg-emerald-50/60 border border-emerald-200/60 rounded-xl p-2.5 space-y-2">
+                        <label class="block text-[10px] font-bold text-emerald-900"><i class="fa-solid fa-money-bill-wave mr-1"></i> Cash Received</label>
+                        <input id="cashReceivedInput" type="number" step="0.01" min="0" placeholder="0.00" class="w-full bg-white border border-emerald-300 text-slate-800 text-sm font-bold py-1.5 px-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <div class="flex justify-between text-xs font-bold pt-1">
+                            <span class="text-emerald-900">Change</span>
+                            <span id="changeDueDisplay" class="text-emerald-700">₱0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-200 bg-slate-50/80 space-y-3">
+                <div class="space-y-1 text-xs">
+                    <div class="flex justify-between text-gray-500">
+                        <span>Service Charges</span>
+                        <span id="serviceChargesDisplay" class="transition-all duration-200">₱0.00</span>
+                    </div>
+                    <div id="reservationReceivedRow" class="hidden flex justify-between text-emerald-700">
+                        <span>Reservation Payment Already Received</span>
+                        <span id="reservationReceivedDisplay" class="transition-all duration-200">&minus; ₱0.00</span>
+                    </div>
+                    <div class="flex justify-between text-gray-700 font-semibold">
+                        <span>Remaining Balance</span>
+                        <span id="remainingBalanceDisplay" class="transition-all duration-200">₱0.00</span>
+                    </div>
+                    <div id="productsChargeRow" class="hidden flex justify-between text-gray-500">
+                        <span>Additional Approved Charges</span>
+                        <span id="subtotalDisplay" class="transition-all duration-200">₱0.00</span>
+                    </div>
+                    <div class="flex justify-between text-gray-500">
+                        <span>Optional Tip</span>
+                        <span id="tipDisplay" class="transition-all duration-200">₱0.00</span>
+                    </div>
+                    <div class="flex justify-between items-baseline font-black text-slate-900 pt-2 mt-1 border-t border-dashed border-gray-300">
+                        <span class="text-xs">Amount Due</span>
+                        <span id="totalDisplay" class="text-xl text-emerald-700 transition-all duration-200">₱0.00</span>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <span class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">Settlement Method</span>
+                    <div class="grid grid-cols-4 gap-1.5">
+                        <label id="method-Cash" data-method="Cash" class="pay-method-card border-2 border-amber-500 bg-amber-50/40 p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer text-slate-900 transition-all">
+                            <i class="fa-solid fa-money-bill-wave text-sm text-emerald-600 mb-0.5"></i>
+                            <span class="text-[10px] font-bold">Cash</span>
+                        </label>
+                        <label id="method-GCash" data-method="GCash" class="pay-method-card border border-gray-200 bg-white hover:border-gray-300 p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer text-slate-600 transition-all">
+                            <i class="fa-solid fa-wallet text-sm text-blue-600 mb-0.5"></i>
+                            <span class="text-[10px] font-bold">GCash</span>
+                        </label>
+                        <label id="method-Maya" data-method="Maya" class="pay-method-card border border-gray-200 bg-white hover:border-gray-300 p-2 rounded-xl flex flex-col items-center justify-center cursor-pointer text-slate-600 transition-all">
+                            <i class="fa-solid fa-wallet text-sm text-purple-600 mb-0.5"></i>
+                            <span class="text-[10px] font-bold">Maya</span>
+                        </label>
+                        <div class="border border-dashed border-gray-200 bg-gray-50 p-2 rounded-xl flex flex-col items-center justify-center text-gray-400 cursor-not-allowed" title="Card payments are not integrated yet">
+                            <i class="fa-solid fa-credit-card text-sm mb-0.5"></i>
+                            <span class="text-[9px] font-bold text-center leading-tight">Card &mdash; Coming Soon</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btnProcessPayment" disabled class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 text-xs transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-print"></i>
+                    <span>Complete Checkout &amp; Issue Receipt</span>
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <div id="productSaleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-100 transform scale-95 transition-transform duration-300">
+            <div class="bg-slate-950 p-4 text-white flex justify-between items-center">
+                <h4 class="font-bold text-sm tracking-wide"><i class="fa-solid fa-tags text-amber-400 mr-2"></i>Add Retail Product to Sale</h4>
+                <button id="btnCloseProductModal" class="text-gray-400 hover:text-white transition-all text-lg">&times;</button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-gray-400 text-xs"></i>
+                    <input id="productSearchInput" type="text" placeholder="Search product name..." class="w-full bg-gray-50 border border-gray-300 rounded-xl pl-9 pr-4 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div id="productListContainer" class="max-h-80 overflow-y-auto space-y-2 border border-gray-200 rounded-xl p-2 bg-gray-50">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="verifyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-gray-100 transform scale-95 transition-transform duration-300">
+            <div class="bg-slate-950 p-4 text-white flex justify-between items-center">
+                <h4 class="font-bold text-sm tracking-wide"><i class="fa-solid fa-hand-holding-dollar text-amber-400 mr-2"></i>Verify Payment</h4>
+                <button id="btnCloseVerifyModal" class="text-gray-400 hover:text-white transition-all text-lg">&times;</button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <p class="text-gray-500">Check this against your GCash/Maya account (or that Cash was actually received) before confirming. Verifying will confirm the appointment.</p>
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold uppercase mb-1">Amount Received</label>
+                    <input id="verifyAmountInput" type="number" step="0.01" min="0.01" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label class="block text-[10px] text-gray-500 font-bold uppercase mb-1">Payment Method</label>
+                    <select id="verifyMethodInput" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="" disabled selected>-- Select --</option>
+                        <option value="Cash">Cash</option>
+                        <option value="GCash">GCash</option>
+                        <option value="Maya">Maya</option>
+                    </select>
+                </div>
+                <button id="btnConfirmVerify" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition duration-150">Verify Payment</button>
+                <button id="btnNeedsAttention" class="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs py-2.5 rounded-xl transition duration-150">Payment Needs Attention</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../../scripts/cashier/cashier-common.js"></script>
+    <script src="../../scripts/cashier/payment.js"></script>
+</body>
+</html>

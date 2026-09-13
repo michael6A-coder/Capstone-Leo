@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leo Mejillano Salon &amp; Beauty — Welcome</title>
+  <link rel="stylesheet" href="../../assets/css/tailwind.build.css">
+  <style>
+    .welcome-cover { position: relative; z-index: 1; flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 28px; text-align: center; }
+    .welcome-entry { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 6px; text-decoration: none; border-radius: 12px; }
+    .welcome-circle { position: relative; width: 112px; height: 112px; border: 1px solid var(--sand); border-radius: 50%; display: grid; place-items: center; }
+    .welcome-circle::before { content: ''; position: absolute; inset: 9px; border: 1px solid var(--gold); border-radius: 50%; transition: inset .3s; }
+    .welcome-core { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; background: var(--teal); color: white; box-shadow: 0 12px 26px -14px rgba(0,109,111,.9); transition: transform .3s; }
+    .welcome-label { font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; color: var(--teal-dark); }
+    .welcome-entry:hover .welcome-circle::before { inset: 3px; }
+    .welcome-entry:hover .welcome-core { transform: scale(1.08); }
+    .welcome-entry:focus-visible { outline: 3px solid var(--teal); outline-offset: 8px; }
+    @media(max-width:560px) { .welcome-circle { width: 94px; height: 94px; } .welcome-core { width: 46px; height: 46px; } }
+    @media(prefers-reduced-motion:reduce) { .welcome-core,.welcome-circle::before { transition: none; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="page-dots" aria-hidden="true"></div>
+    <section class="welcome-cover" id="cover" aria-labelledby="welcome-title">
+      <div class="top-bar" data-auth-topbar></div>
+      <div class="cover-hero">
+        <span class="card-eyebrow">Salon &amp; Beauty</span>
+        <h1 class="cover-title" id="welcome-title">Where beauty<br><em>meets care</em></h1>
+        <p class="cover-text">Your next salon visit starts here. Log in to book an appointment and manage your visits.</p>
+        <a class="welcome-entry" id="aperture-btn" href="../portal-login/index.html">
+          <span class="welcome-circle" aria-hidden="true"><span class="welcome-core">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          </span></span>
+          <span class="welcome-label">Continue to log in</span>
+        </a>
+      </div>
+      <span class="page-note" data-auth-footer></span>
+    </section>
+  </div>
+  <script src="../../scripts/login/common.js?v=2"></script>
+  <script src="../../scripts/login/login.js"></script>
+</body>
+</html>

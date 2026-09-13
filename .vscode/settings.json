@@ -1,0 +1,10 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+
+  "tailwindCSS.experimental.configFile": {
+    "tailwind.config.main.js": ["index.html", "assets/js/main.js"],
+    "tailwind.config.login.js": ["pages/login/*.html", "scripts/login/*.js"]
+  }
+}

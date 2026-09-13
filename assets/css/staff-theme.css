@@ -1,0 +1,62 @@
+/* Staff portal treatment aligned with the public site and other portals. */
+@import url("./admin-theme.css");
+
+/* Translate the staff portal's emerald accent language into brand teal. */
+.text-emerald-300,
+.text-emerald-400,
+.text-emerald-500 { color: var(--admin-deep-teal) !important; }
+
+.bg-emerald-500,
+.bg-emerald-600,
+.bg-emerald-700 { background-color: var(--admin-deep-teal) !important; }
+
+.from-emerald-600 { --tw-gradient-from: var(--admin-deep-teal) var(--tw-gradient-from-position) !important; }
+.via-teal-500 { --tw-gradient-via: var(--admin-gold) var(--tw-gradient-via-position) !important; }
+.to-emerald-800 { --tw-gradient-to: var(--admin-dark-teal) var(--tw-gradient-to-position) !important; }
+
+.border-emerald-800,
+[class*="border-emerald-900"] { border-color: rgb(0 109 111 / 0.24) !important; }
+
+.ring-emerald-500,
+.focus\:ring-emerald-500:focus { --tw-ring-color: rgb(0 109 111 / 0.28) !important; }
+
+aside a[data-nav-page] { color: rgb(255 248 238 / 0.72) !important; }
+aside a[data-nav-page]:hover { color: var(--admin-cream) !important; background: rgb(255 248 238 / 0.08) !important; }
+aside a[data-nav-page][class*="bg-emerald-950"] {
+  color: var(--admin-cream) !important;
+  background: var(--admin-deep-teal) !important;
+  border-left-color: var(--admin-gold) !important;
+}
+
+aside a[data-nav-page] .text-emerald-400,
+aside h1.text-emerald-400 { color: var(--admin-gold) !important; }
+
+/* Floating mobile navigation becomes a warm-white pill with a teal slider. */
+nav.md\:hidden > div[class*="bg-slate-900"] {
+  background: rgb(255 253 249 / 0.96) !important;
+  border-color: rgb(217 201 180 / 0.72) !important;
+  box-shadow: 0 16px 40px -24px rgb(6 70 74 / 0.65);
+}
+
+#mobile-nav-slider { background: var(--admin-deep-teal) !important; }
+nav.md\:hidden a[data-mobile-nav-page] { color: rgb(34 34 34 / 0.55) !important; }
+nav.md\:hidden a[data-mobile-nav-page].text-white { color: var(--admin-panel) !important; }
+
+/* Staff dialogs are outside main on several pages. */
+body > [class*="fixed"][class*="inset-0"] > div.relative[class*="bg-slate-900"] {
+  color: var(--admin-charcoal);
+  background: var(--admin-panel) !important;
+  border-color: var(--admin-bronze) !important;
+  box-shadow: 0 28px 70px -35px rgb(6 70 74 / 0.55);
+}
+
+body > [class*="fixed"][class*="inset-0"] input:not([type="checkbox"]):not([type="radio"]),
+body > [class*="fixed"][class*="inset-0"] select,
+body > [class*="fixed"][class*="inset-0"] textarea {
+  color: var(--admin-charcoal) !important;
+  background: var(--admin-cream) !important;
+  border-color: rgb(217 201 180 / 0.75) !important;
+  color-scheme: light;
+}
+
+.card-lift:hover { box-shadow: 0 16px 32px -22px rgb(0 109 111 / 0.42) !important; }

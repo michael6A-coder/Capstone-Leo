@@ -1,0 +1,415 @@
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/preflight" layer(base);
+@import "tailwindcss/utilities" layer(utilities);
+@config "../../tailwind.config.login.js";
+
+/* Touch taps fire :hover with no way to "unhover", so hover-only feedback
+   (rings, icon slides, etc.) can look stuck after a tap on mobile. This
+   variant only applies on pointers that support a real hover (mouse/
+   trackpad), matching real device behaviour. Registered here (CSS
+   @custom-variant) rather than via the old tailwind.config.js addVariant()
+   plugin API, because only the CSS form makes Tailwind v4 auto-derive a
+   working group-hoverfine: companion — addVariant('group-hoverfine', ...)
+   compiled to no CSS at all under v4. */
+@custom-variant hoverfine {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+/* The login pages' brand palette. login.html's cover/reveal screens
+   already reference several of these directly (e.g. bg-[var(--cream)]),
+   so the names stay as-is rather than being remapped onto the
+   differently-named tokens style.css/tailwind.config.js use for the
+   rest of the site. */
+:root {
+  --teal: #006d6f;
+  --teal-dark: #06464a;
+  --gold: #e0b84c;
+  --gold-dark: #b8933a;
+  --cream: #fff8ee;
+  --panel: #fffdf9;
+  --sand: #e8dcc8;
+  --charcoal: #222222;
+
+  --font-title: Georgia, Cambria, "Times New Roman", serif;
+  --font-body: "Segoe UI", Tahoma, Verdana, Arial, sans-serif;
+
+  --radius: 22px;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    line-height: 1.5;
+    @apply text-(--charcoal) bg-(--cream) min-h-screen;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+/* ==========================================================
+   Leo Mejillano Salon and Beauty - login pages component layer
+   Capstone Project, STI College Legazpi
+
+   Used by login.html, register.html, verify-otp.html,
+   forgot-password.html, and reset-password.html. Each class here
+   is defined with Tailwind's @apply so the compiled output is real
+   Tailwind CSS, while the five pages' markup keeps using the same
+   semantic class names (card, field-box, btn-main, ...) they always
+   have — nothing in the HTML needs to change.
+   ========================================================== */
+@layer components {
+  .page {
+    @apply relative min-h-screen overflow-hidden flex flex-col items-center px-4 py-5 gap-4.5 sm:px-5 sm:py-7 sm:gap-5.5;
+    justify-content: safe center;
+  }
+  /* Modifier for the four pages that put the top bar, the card, and
+     the footer directly inside .page (every login page except
+     login.html itself). Grid rows keep the top bar and footer pinned
+     to auto-height rows at the page's edges, while only the card
+     centres in the space left over (the 1fr row). */
+  .page-stacked {
+    @apply grid grid-rows-[auto_1fr_auto] justify-items-center;
+    align-items: safe center;
+  }
+  @media (min-width: 640px) {
+    .page-stacked {
+      align-items: center;
+    }
+  }
+
+  .page::before,
+  .page::after {
+    content: "";
+    @apply absolute rounded-full pointer-events-none z-0;
+    filter: blur(70px);
+  }
+  .page::before {
+    @apply w-105 h-105;
+    top: -160px;
+    right: -140px;
+    background: rgba(224, 184, 76, 0.28); /* gold glow */
+  }
+  .page::after {
+    @apply w-115 h-115;
+    bottom: -190px;
+    left: -170px;
+    background: rgba(0, 109, 111, 0.14); /* teal glow */
+  }
+
+  .page-dots {
+    @apply absolute inset-0 z-0 pointer-events-none opacity-5;
+    background-image: radial-gradient(
+      circle at 1px 1px,
+      var(--charcoal) 1px,
+      transparent 0
+    );
+    background-size: 24px 24px;
+  }
+
+  .top-bar,
+  .card,
+  .page-note {
+    @apply relative z-1;
+  }
+
+  .top-bar {
+    @apply w-full max-w-275 flex items-center justify-between gap-4;
+  }
+
+  .wordmark {
+    font-family: var(--font-title);
+    @apply text-[15px] font-bold tracking-[0.14em] text-(--teal-dark);
+  }
+
+  .link-back {
+    @apply text-xs font-semibold tracking-[0.04em] no-underline rounded-full px-4 py-2 transition-colors duration-250;
+    color: rgba(34, 34, 34, 0.65);
+    border: 1px solid var(--sand);
+  }
+  .link-back:hover {
+    border-color: var(--teal);
+    background: rgba(0, 109, 111, 0.05);
+    @apply text-(--teal);
+  }
+
+  .page-note {
+    @apply text-[11.5px] text-center;
+    color: rgba(34, 34, 34, 0.45);
+  }
+
+  .card {
+    @apply w-full max-w-110 py-8 px-7.5 rounded-(--radius) shadow-[0_26px_60px_-34px_rgba(0,0,0,0.45)];
+    background: var(--panel);
+    border: 1px solid var(--sand);
+    animation: rise 0.45s ease both;
+  }
+  .card-wide {
+    @apply max-w-150; /* the register form has two columns */
+  }
+
+  /* "Close" link at the top of a card, used by pages the visitor can
+     reach directly (forgot password, create account) so there is a
+     quick way back to the sign in card besides the browser's back
+     button. Negative margin + padding keeps it a proper tap target
+     without shifting the visible layout. */
+  .close-link {
+    @apply inline-flex items-center gap-1.5 self-start -mt-1.5 -mx-1 mb-3 py-1.5 px-1 text-xs font-semibold no-underline rounded-lg transition-colors duration-200;
+    color: rgba(34, 34, 34, 0.55);
+  }
+  .close-link svg {
+    @apply transition-transform duration-200 ease-out;
+  }
+  .close-link:hover {
+    @apply text-(--teal);
+  }
+  .close-link:hover svg {
+    @apply -translate-x-0.75;
+  }
+
+  .card-badge {
+    @apply w-11 h-11 rounded-full flex items-center justify-center mb-4;
+    background: rgba(0, 109, 111, 0.08);
+    border: 1px solid rgba(224, 184, 76, 0.55);
+    color: var(--teal);
+  }
+
+  .card-eyebrow {
+    @apply block text-[10.5px] font-extrabold tracking-[0.22em] uppercase mb-1.75;
+    color: var(--gold-dark);
+  }
+
+  .card-title {
+    font-family: var(--font-title);
+    @apply text-[29px] font-bold leading-[1.2] text-(--charcoal);
+  }
+
+  .card-text {
+    @apply text-[13.5px] leading-[1.65] mt-2.25;
+    color: rgba(34, 34, 34, 0.62);
+  }
+  .card-text strong {
+    @apply text-(--teal);
+  }
+
+  .form {
+    @apply mt-6;
+  }
+
+  .field {
+    @apply mb-4;
+  }
+
+  .field label {
+    @apply block text-[10.5px] font-extrabold tracking-[0.13em] uppercase mb-1.5;
+    color: rgba(34, 34, 34, 0.5);
+  }
+
+  .field-box {
+    @apply flex items-center gap-2.5 rounded-[13px] px-3.25 transition-[border-color,box-shadow] duration-250;
+    background: var(--cream);
+    border: 1px solid var(--sand);
+  }
+  .field-box:focus-within {
+    border-color: var(--teal);
+    box-shadow: 0 0 0 3px rgba(0, 109, 111, 0.13);
+  }
+  .field-box svg {
+    @apply shrink-0;
+    color: rgba(34, 34, 34, 0.4);
+  }
+  .field-box input {
+    @apply flex-1 min-w-0 border-0 outline-none bg-transparent py-3 text-sm;
+  }
+  .field-box input::placeholder {
+    color: rgba(34, 34, 34, 0.32);
+  }
+
+  .field-box.is-wrong {
+    border-color: #c0392b;
+  }
+  .field-error {
+    @apply hidden text-xs mt-1.25;
+    color: #c0392b;
+  }
+  .field-error.show {
+    @apply block;
+  }
+
+  .field-row {
+    @apply grid grid-cols-1 gap-x-4.5 sm:grid-cols-2;
+  }
+
+  .eye-btn {
+    @apply shrink-0 p-1 flex transition-colors duration-200;
+    color: rgba(34, 34, 34, 0.4);
+  }
+  .eye-btn:hover {
+    @apply text-(--teal);
+  }
+
+  .form-row {
+    @apply flex items-center justify-between gap-3.5 text-[13px] mb-5;
+  }
+
+  .checkbox {
+    @apply flex items-center gap-2 cursor-pointer;
+    color: rgba(34, 34, 34, 0.62);
+  }
+  .checkbox input {
+    @apply w-3.75 h-3.75 cursor-pointer;
+    accent-color: var(--teal);
+  }
+
+  .btn-main {
+    @apply w-full text-white rounded-full p-3.75 sm:p-3.5 text-[12.5px] font-extrabold tracking-[0.13em] uppercase transition-[background-color,transform] duration-250;
+    background: var(--teal);
+  }
+  .btn-main:hover {
+    background: var(--teal-dark);
+  }
+  .btn-main:active {
+    @apply scale-[0.985];
+  }
+  .btn-main:disabled {
+    @apply opacity-55 cursor-not-allowed;
+  }
+
+  .link-gold {
+    @apply font-bold no-underline transition-colors duration-200;
+    color: var(--gold-dark);
+    border-bottom: 1px solid rgba(224, 184, 76, 0.7);
+  }
+  .link-gold:hover {
+    border-color: var(--teal);
+    @apply text-(--teal);
+  }
+  .link-gold:disabled {
+    @apply border-transparent cursor-not-allowed;
+    color: rgba(34, 34, 34, 0.35);
+  }
+
+  .divider {
+    @apply flex items-center gap-3 my-5.5;
+    color: var(--gold);
+  }
+  .divider span {
+    @apply flex-1 h-px;
+    background: var(--sand);
+  }
+
+  .card-foot {
+    @apply text-center text-[13px];
+    color: rgba(34, 34, 34, 0.62);
+  }
+  .card-foot + .card-foot {
+    @apply mt-2;
+  }
+
+  .otp-row {
+    @apply grid grid-cols-6 gap-1.5 mb-5 sm:gap-2.25;
+  }
+
+  .otp-digit {
+    font-family: var(--font-title);
+    @apply w-full aspect-square text-center text-[18px] sm:text-[21px] rounded-[10px] sm:rounded-xl outline-none transition-[border-color,box-shadow,background-color] duration-200;
+    color: var(--charcoal);
+    background: var(--cream);
+    border: 1px solid var(--sand);
+  }
+  .otp-digit:focus {
+    border-color: var(--teal);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(0, 109, 111, 0.13);
+  }
+  .otp-digit.filled {
+    border-color: var(--gold);
+  }
+
+  .toast {
+    @apply fixed left-5 right-5 bottom-5 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-90 z-60 rounded-[13px] py-3.25 px-4 text-[13.5px] leading-normal shadow-[0_18px_40px_-22px_rgba(0,0,0,0.5)] opacity-0 translate-y-3.5 pointer-events-none transition-[opacity,transform] duration-300;
+    background: var(--panel);
+    border: 1px solid var(--sand);
+    border-left: 4px solid var(--teal);
+  }
+  .toast.show {
+    @apply opacity-100 translate-y-0;
+  }
+  .toast.is-good {
+    border-left-color: var(--teal);
+  }
+  .toast.is-wrong {
+    border-left-color: #c0392b;
+  }
+  .toast.is-note {
+    border-left-color: var(--gold);
+  }
+
+  .loading {
+    @apply fixed inset-0 z-70 hidden items-center justify-center;
+    background: rgba(255, 248, 238, 0.82);
+  }
+  .loading.show {
+    @apply flex;
+  }
+
+  .spinner {
+    @apply w-11.5 h-11.5 rounded-full;
+    border: 4px solid var(--sand);
+    border-top-color: var(--teal);
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* ---------- Cover and iris reveal (login.html only) ----------
+     The cover/reveal animation itself (fade, aperture hover/press,
+     clip-path reveal, card entrance, close-button hover) is built
+     with Tailwind utility classes directly in login.html. Only the
+     static hero text styling lives here. */
+  .cover-hero {
+    @apply flex flex-col items-center gap-4 max-w-140;
+  }
+  .cover-title {
+    font-family: var(--font-title);
+    @apply text-[clamp(34px,6vw,58px)] font-normal italic leading-[1.08] text-(--teal-dark);
+  }
+  .cover-title em {
+    @apply not-italic font-bold text-(--teal);
+  }
+  .cover-text {
+    @apply text-[14.5px] leading-[1.7] max-w-100;
+    color: rgba(34, 34, 34, 0.62);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+  .spinner {
+    animation: none;
+  }
+  .toast {
+    transition: none;
+  }
+}
