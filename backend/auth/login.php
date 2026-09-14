@@ -30,15 +30,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
-// Limit: 5 failed login attempts per IP address within 15 minutes.
+// Limit: 5 failed login attempts per IP address within 1 minute.
 $ip_address = RateLimiter::getIpAddress();
-$login_limiter = new RateLimiter($ip_address, 'login_fail', 5, 900); // 5 attempts, 900 seconds (15 mins)
+$login_limiter = new RateLimiter($ip_address, 'login_fail', 5, 60); // 5 attempts, 60 seconds (1 min)
 
 if ($login_limiter->isExceeded()) {
     http_response_code(429); // Too Many Requests
     echo json_encode([
         'success' => false,
-        'message' => 'Too many failed login attempts. Please try again in 15 minutes.'
+        'message' => 'Too many failed login attempts. Please try again in 1 minute.'
     ]);
     exit();
 }

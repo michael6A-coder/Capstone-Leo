@@ -60,7 +60,6 @@ function renderStaff() {
           </div>
           <span class="text-[10px] font-bold uppercase ${availabilityBadgeClass(s)}${s.availability.startsWith('Busy') ? ' badge-live' : ''}">${escapeHtml(s.availability)}</span>
         </div>
-        <p class="text-[9px] text-gray-400 italic">${escapeHtml(s.specialties || '')}</p>
         <div class="grid grid-cols-2 gap-x-2 text-[10px] text-gray-500 pt-1 border-t border-gray-100">
           <span>Today: ${s.todaysWorkload} booking${s.todaysWorkload === 1 ? '' : 's'}</span>
           <span class="text-right truncate" title="${escapeHtml(s.nextAppointment || '')}">${s.nextAppointment ? 'Next: ' + escapeHtml(s.nextAppointment) : 'No upcoming'}</span>
