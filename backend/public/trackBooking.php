@@ -13,16 +13,21 @@
 
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/HomeServiceRequest.php';
+
+date_default_timezone_set('Asia/Manila');
 
 sendCorsHeaders();
 header('Content-Type: application/json');
 
 $reference = strtoupper(trim($_GET['reference'] ?? ''));
 $phone = trim($_GET['phone'] ?? '');
+// Home services are tracked with reference + the EMAIL given on the request.
+$email = strtolower(trim($_GET['email'] ?? ''));
 
-if ($reference === '' || $phone === '') {
+if ($reference === '' || ($phone === '' && $email === '')) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Enter both the booking reference and the mobile number used for it.']);
+    echo json_encode(['success' => false, 'message' => 'Enter both the booking reference and the ' . (str_starts_with($reference, 'LM-HOM') ? 'email address' : 'mobile number') . ' used for it.']);
     exit();
 }
 
@@ -71,6 +76,9 @@ try {
     $stmt = $pdo->prepare("
         SELECT
             h.id, h.reference_code AS reference, h.status, h.event_type, h.preferred_date, h.address, h.requests,
+            h.quote_price, h.deposit_amount, h.deposit_paid, h.paymongo_checkout_url,
+            h.reference_code, h.customer_id, h.preferred_time, h.reschedule_count, h.contact_email,
+            h.balance_checkout_url, (SELECT COALESCE(SUM(hp.amount), 0) FROM home_service_payments hp WHERE hp.home_service_request_id = h.id) AS amount_paid,
             c.phone_number AS phone,
             EXISTS(SELECT 1 FROM feedback f WHERE f.home_service_request_id = h.id) AS has_feedback
         FROM home_service_requests h
@@ -81,9 +89,11 @@ try {
     $hs = $stmt->fetch();
 
     if ($hs) {
-        if ($hs['phone'] !== $phone) {
+        $emailMatches = $email !== '' && $hs['contact_email'] && strcasecmp($hs['contact_email'], $email) === 0;
+        $phoneMatches = $phone !== '' && $hs['phone'] === $phone;
+        if (!$emailMatches && !$phoneMatches) {
             http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'No booking found for that reference and mobile number.']);
+            echo json_encode(['success' => false, 'message' => 'No home service request found for that reference and email address.']);
             exit();
         }
 
@@ -96,7 +106,22 @@ try {
             'date' => $hs['preferred_date'],
             'venue' => $hs['address'],
             'requests' => $hs['requests'],
+            'quote' => $hs['quote_price'] !== null ? (float) $hs['quote_price'] : null,
+            'reservationFee' => $hs['deposit_amount'] !== null ? (float) $hs['deposit_amount'] : null,
+            'feePaid' => (int) $hs['deposit_paid'] === 1,
+            // PayMongo link for the reservation fee while it's still unpaid.
+            'payUrl' => $hs['status'] === 'Payment Required' && !(int) $hs['deposit_paid'] ? $hs['paymongo_checkout_url'] : null,
+            // Remaining balance after the DP, and its PayMongo link once the salon sends it.
+            'amountPaid' => (float) $hs['amount_paid'],
+            'balanceDue' => $hs['quote_price'] !== null ? max(0, round((float) $hs['quote_price'] - (float) $hs['amount_paid'], 2)) : null,
+            'balancePayUrl' => $hs['quote_price'] !== null && (float) $hs['quote_price'] > (float) $hs['amount_paid'] ? $hs['balance_checkout_url'] : null,
             'canReview' => $hs['status'] === 'Completed' && !$hs['has_feedback'],
+            // Online rescheduling (backend/public/rescheduleHomeService.php).
+            'time' => $hs['preferred_time'] ? date('h:i A', strtotime($hs['preferred_time'])) : null,
+            'canReschedule' => ($rescheduleBlocked = HomeServiceRequest::rescheduleBlockedReason($hs)) === null,
+            'rescheduleNote' => $rescheduleBlocked,
+            'reschedulesLeft' => max(0, HomeServiceRequest::MAX_ONLINE_RESCHEDULES - (int) $hs['reschedule_count']),
+            'rescheduleCutoffDays' => HomeServiceRequest::RESCHEDULE_CUTOFF_HOURS / 24,
         ]);
         exit();
     }

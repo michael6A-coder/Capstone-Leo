@@ -11,7 +11,6 @@
   <link rel="stylesheet" href="../../assets/css/fonts-inter-playfair.css">
   <link rel="stylesheet" href="../../assets/css/admin-theme.css">
   <script src="../../scripts/admin/theme-config.js"></script>
-  <link rel="stylesheet" href="../../assets/css/account-pin.css">
 </head>
 <body class="bg-luxury-950 text-slate-100 font-sans min-h-screen antialiased selection:bg-luxury-500 selection:text-white"
       x-data="adminSettingsApp()" x-init="init()" x-cloak>
@@ -72,7 +71,7 @@
 
       <div>
         <div class="p-4 border-t border-slate-800">
-          <a href="../login/login.html" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
+          <a href="../../backend/auth/logout.php" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"></path></svg>
             <span>Sign Out</span>
           </a>
@@ -124,8 +123,6 @@
       </header>
 
       <div class="p-6 space-y-6 max-w-4xl">
-        <section data-account-pin aria-label="Portal access PIN"></section>
-
         <div class="bg-slate-900 border border-luxury-900 rounded-2xl p-5 space-y-4">
           <div class="border-b border-slate-800 pb-3">
             <h3 class="font-serif text-sm font-bold text-white">Branch Information Management</h3>
@@ -235,7 +232,7 @@
                 <input type="checkbox" x-model="$store.admin.notificationPrefs.inventoryAlerts" @change="saveNotificationPrefs()" class="rounded border-slate-700 bg-slate-950 text-luxury-600 focus:ring-purple-500">
               </label>
               <label class="flex items-center justify-between text-xs text-slate-300">
-                <span>Supplier updates</span>
+                <span>Inventory order updates</span>
                 <input type="checkbox" x-model="$store.admin.notificationPrefs.orderAlerts" @change="saveNotificationPrefs()" class="rounded border-slate-700 bg-slate-950 text-luxury-600 focus:ring-purple-500">
               </label>
               <label class="flex items-center justify-between text-xs text-slate-300">
@@ -327,47 +324,6 @@
           </div>
         </div>
 
-        <div class="bg-slate-900 border border-luxury-900 rounded-2xl p-5">
-          <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-4 flex-wrap gap-2">
-            <div>
-              <h3 class="font-serif text-sm font-bold text-white">Accounts & Access — Supplier Accounts</h3>
-              <p class="text-[11px] text-slate-400">External vendors with their own Supplier Portal login — can only see purchase orders assigned to them.</p>
-            </div>
-            <button @click="openAddSupplierModal()" class="bg-luxury-600 hover:bg-luxury-700 text-white font-semibold text-xs px-3 py-2 rounded-lg transition duration-150 whitespace-nowrap">+ Add Supplier</button>
-          </div>
-
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs text-slate-300">
-              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px]">
-                <tr>
-                  <th class="p-3">Company Name</th>
-                  <th class="p-3">Contact Person</th>
-                  <th class="p-3">Phone</th>
-                  <th class="p-3">Email (login)</th>
-                  <th class="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/80">
-                <template x-for="supplier in $store.admin.supplierList" :key="supplier.id">
-                  <tr class="hover:bg-slate-800/30 transition">
-                    <td class="p-3 font-semibold text-white" x-text="supplier.companyName"></td>
-                    <td class="p-3 text-slate-300" x-text="supplier.contactPerson || '—'"></td>
-                    <td class="p-3 text-slate-400" x-text="supplier.phone || '—'"></td>
-                    <td class="p-3 text-slate-400" x-text="supplier.email"></td>
-                    <td class="p-3 text-right space-x-4 text-[10px] whitespace-nowrap">
-                      <button @click="openEditSupplier(supplier)" class="text-purple-400 hover:underline">Edit</button>
-                      <button @click="removeSupplierAccount(supplier.id)" class="text-rose-400 hover:underline">Remove</button>
-                    </td>
-                  </tr>
-                </template>
-                <template x-if="$store.admin.supplierList.length === 0">
-                  <tr><td colspan="5" class="p-6 text-center text-slate-500 italic">No supplier accounts yet.</td></tr>
-                </template>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </div>
     </main>
   </div>
@@ -407,47 +363,7 @@
     </div>
   </div>
 
-  <div x-show="openSupplierModal" x-cloak class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" @keydown.escape.window="openSupplierModal = false">
-    <div @click.outside="openSupplierModal = false" class="bg-slate-900 border border-luxury-800 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-        <h3 class="font-serif text-lg font-bold text-white" x-text="editingSupplierId ? 'Edit Supplier Account' : 'Add Supplier Account'"></h3>
-        <button @click="openSupplierModal = false" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
-      </div>
-
-      <form @submit.prevent="saveSupplier()" class="space-y-3">
-        <div>
-          <label class="block text-[10px] text-slate-400 mb-1">Supplier / Company Name</label>
-          <input type="text" x-model="supplierForm.companyName" required class="w-full bg-slate-950 text-slate-300 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
-        </div>
-        <div>
-          <label class="block text-[10px] text-slate-400 mb-1">Contact Person</label>
-          <input type="text" x-model="supplierForm.contactPerson" class="w-full bg-slate-950 text-slate-300 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[10px] text-slate-400 mb-1">Phone</label>
-            <input type="text" x-model="supplierForm.phone" class="w-full bg-slate-950 text-slate-300 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
-          </div>
-          <template x-if="!editingSupplierId">
-            <div>
-              <label class="block text-[10px] text-slate-400 mb-1">Email (login)</label>
-              <input type="email" x-model="supplierForm.email" required class="w-full bg-slate-950 text-slate-300 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
-            </div>
-          </template>
-        </div>
-        <div>
-          <label class="block text-[10px] text-slate-400 mb-1">Address</label>
-          <textarea x-model="supplierForm.address" rows="2" class="w-full bg-slate-950 text-slate-300 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500"></textarea>
-        </div>
-        <p class="text-[10px] text-slate-500" x-show="!editingSupplierId">A temporary password will be generated and shown once after this is saved.</p>
-
-        <button type="submit" :disabled="savingSupplier" class="w-full bg-luxury-600 hover:bg-luxury-700 text-white font-bold text-xs py-2.5 rounded-lg transition duration-150 mt-2 disabled:opacity-60 disabled:cursor-not-allowed" x-text="savingSupplier ? 'Saving…' : (editingSupplierId ? 'Save Changes' : 'Add Supplier Account')"></button>
-      </form>
-    </div>
-  </div>
-
   <script src="../../scripts/admin/shared-data.js"></script>
   <script src="../../scripts/admin/settings.js"></script>
-  <script src="../../scripts/login/account-pin.js"></script>
 </body>
 </html>

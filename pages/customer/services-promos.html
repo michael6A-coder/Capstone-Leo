@@ -61,19 +61,19 @@
 
   <div class="h-1.5 w-full bg-gradient-to-r from-luxury-600 via-gold-500 to-luxury-800 topbar-shine"></div>
 
-  <div class="fixed top-4 right-4 z-[100] w-72 space-y-2" aria-live="polite">
+  <div class="fixed top-24 right-4 left-4 sm:left-auto z-[9999] sm:w-80 space-y-2" aria-live="polite">
     <template x-for="toast in toasts" :key="toast.id">
       <div x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-x-6"
            x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200"
            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
            :class="{
-             'border-emerald-700 bg-emerald-950/95': toast.type === 'success',
-             'border-rose-700 bg-rose-950/95': toast.type === 'error',
-             'border-luxury-700 bg-luxury-950/95': toast.type === 'info'
+             'border-[#86EFAC] bg-[#F0FDF4] text-[#14532D]': toast.type === 'success',
+             'border-[#FDA4AF] bg-[#FFF1F2] text-[#881337]': toast.type === 'error',
+             'border-[#99D5D6] bg-[#F0FAFA] text-[#06464A]': toast.type === 'info' || toast.type === 'system'
            }"
-           class="border rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm flex items-start gap-2 text-xs text-slate-100">
+           class="border-2 rounded-xl px-4 py-3 shadow-2xl flex items-start gap-2 text-[13px] font-semibold">
         <span x-text="toast.message" class="flex-1 leading-relaxed"></span>
-        <button @click="dismissToast(toast.id)" class="text-slate-400 hover:text-white shrink-0 leading-none text-base">&times;</button>
+        <button @click="dismissToast(toast.id)" class="opacity-60 hover:opacity-100 shrink-0 leading-none text-lg" aria-label="Dismiss">&times;</button>
       </div>
     </template>
   </div>
@@ -383,6 +383,18 @@
                             <option :value="staff.id" x-text="staff.name + ' (' + staff.role + ')'"></option>
                           </template>
                         </select>
+                        <div x-show="getBusyStaffForBranch().length > 0" class="border border-dashed border-slate-600 rounded-lg p-3 space-y-2">
+                          <p class="text-slate-400"><strong class="text-white">Preferred stylist booked at this time?</strong> We'll email you if they have an opening on this date.</p>
+                          <div class="flex gap-2">
+                            <select x-model="waitlistStaffId" class="flex-1 bg-slate-950 text-slate-200 rounded-lg p-2 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
+                              <option value="">Choose stylist…</option>
+                              <template x-for="staff in getBusyStaffForBranch()" :key="staff.id">
+                                <option :value="staff.id" x-text="staff.name"></option>
+                              </template>
+                            </select>
+                            <button type="button" @click="joinStylistWaitlist()" :disabled="isJoiningWaitlist" class="px-3 py-2 border border-gold-500 text-gold-400 font-bold rounded-lg hover:bg-gold-500 hover:text-slate-900 transition disabled:opacity-50">Notify me</button>
+                          </div>
+                        </div>
                       </div>
                     </template>
 
@@ -435,7 +447,7 @@
                       <div class="bg-slate-800 border border-luxury-700 p-4 rounded-lg space-y-3">
                         <p class="font-medium text-white">SECURE YOUR APPOINTMENT</p>
                         <p class="text-slate-400">Your selected schedule is available. Complete the required reservation payment below to continue.</p>
-                        <p class="text-slate-400">Depending on the selected service, you may need to pay 50% of the total or the full amount.</p>
+                        <p class="text-slate-400">Pay a deposit (50% of the total, minimum ₱100 — some services require full payment) or pay the full amount now.</p>
                         <p class="text-slate-400">Your booking will remain Waiting for Confirmation until the branch verifies your payment.</p>
                         <dl class="space-y-2 border-y border-slate-700 py-3">
                           <div><dt class="text-slate-400">Selected Service</dt><dd class="text-white" x-text="reservationQuote?.items.map(s => s.name).join(', ')"></dd></div>
@@ -447,23 +459,27 @@
 
                         <template x-if="!depositLocked">
                           <div class="space-y-3">
+                            <div x-show="reservationQuote?.canChoosePlan">
+                              <label class="block text-slate-400 mb-1">How much to pay now</label>
+                              <div class="grid grid-cols-2 gap-2">
+                                <label class="flex items-center gap-2 bg-slate-950 border rounded-lg p-2.5 cursor-pointer" :class="bookingForm.paymentPlan === 'deposit' ? 'border-gold-500 text-white' : 'border-slate-800 text-slate-300'">
+                                  <input type="radio" value="deposit" x-model="bookingForm.paymentPlan" @change="loadReservationQuote()" class="accent-amber-500"> Deposit (min ₱100)
+                                </label>
+                                <label class="flex items-center gap-2 bg-slate-950 border rounded-lg p-2.5 cursor-pointer" :class="bookingForm.paymentPlan === 'full' ? 'border-gold-500 text-white' : 'border-slate-800 text-slate-300'">
+                                  <input type="radio" value="full" x-model="bookingForm.paymentPlan" @change="loadReservationQuote()" class="accent-amber-500"> Full amount
+                                </label>
+                              </div>
+                            </div>
                             <div>
                               <label class="block text-slate-400 mb-1">Payment Method</label>
                               <select x-model="bookingForm.paymentMethod" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
                                 <option value="" disabled>Choose a payment method...</option>
-                                <option value="Cash">Cash</option>
-                                <option value="GCash">GCash</option>
-                                <option value="Maya">Maya</option>
-                                <option value="" disabled>Card — Coming Soon</option>
+                                <option value="PayMongo">Pay Online — GCash, Maya or Card</option>
+                                <option value="Cash">Cash — pay at the branch</option>
                               </select>
                             </div>
-                            <p x-show="bookingForm.paymentMethod === 'Cash'" class="text-slate-500 bg-slate-900 border border-slate-700 rounded-lg p-3">Cash deposits can't be verified remotely — bring the deposit amount to the branch. Your booking remains Waiting for Confirmation until you pay in person and staff verify payment.</p>
-                            <div x-show="bookingForm.paymentMethod === 'GCash' || bookingForm.paymentMethod === 'Maya'">
-                              <label class="block text-slate-400 mb-1" x-text="bookingForm.paymentMethod + ' Reference Number'"></label>
-                              <input type="text" x-model="bookingForm.depositReference" placeholder="e.g. the transaction reference from your app" class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
-                              <p class="text-slate-500 mt-1">Send the deposit to the branch's GCash/Maya number first, then enter the reference here. Staff will verify it against their account before your slot is locked.</p>
-                            </div>
-                          </div>
+                            <p x-show="bookingForm.paymentMethod === 'PayMongo'" class="text-slate-500 bg-slate-900 border border-slate-700 rounded-lg p-3">After you confirm, you'll be taken to PayMongo's secure checkout to pay with GCash, Maya or card. Your slot is held for 30 minutes while you pay — no reference number needed.</p>
+                            <p x-show="bookingForm.paymentMethod === 'Cash'" class="text-slate-500 bg-slate-900 border border-slate-700 rounded-lg p-3">Cash deposits can't be verified remotely — bring the deposit amount to the branch. Your booking remains Waiting for Confirmation until you pay in person and staff verify payment.</p>                          </div>
                         </template>
 
                         <div x-show="depositLocked" class="flex items-center justify-between gap-3">
@@ -499,9 +515,9 @@
                           <ul class="list-disc list-inside space-y-1">
                             <li><strong class="text-slate-300">Reservation payment:</strong> A reservation payment is required to hold your appointment slot.</li>
                             <li><strong class="text-slate-300">50% or full payment:</strong> Depending on the service selected, you must pay either a 50% down payment or the full amount upfront — the required amount is shown before you book.</li>
-                            <li><strong class="text-slate-300">Payment verification:</strong> GCash/Maya payments are verified by the branch against the reference number you provide; Cash must be settled in person. Your payment stays "Payment Being Verified" until staff confirm it — you can never verify your own payment.</li>
+                            <li><strong class="text-slate-300">Payment verification:</strong> Online payments (GCash, Maya or card) are processed securely by PayMongo; Cash must be settled in person. Your payment stays "Payment Being Verified" until staff confirm it — you can never verify your own payment.</li>
                             <li><strong class="text-slate-300">Confirmation rules:</strong> Your requested time is held as Waiting for Confirmation until the branch verifies your payment and confirms it — it is not guaranteed until confirmed.</li>
-                            <li><strong class="text-slate-300">Cancellation:</strong> You may cancel your booking; cancel as early as possible so the slot can be offered to someone else.</li>
+                            <li><strong class="text-slate-300">Deposit &amp; rescheduling policy:</strong> Reservation deposits are <u>non-refundable</u>. Need a different time? Reschedule instead (online up to 24 hours before, or by contacting the branch) and your deposit carries over. If you cancel or miss your appointment, the deposit is kept, but that booking can still be rescheduled later using the deposit.</li>
                             <li><strong class="text-slate-300">Rescheduling:</strong> You may request to reschedule; please do so as early as possible, subject to availability.</li>
                             <li><strong class="text-slate-300">No-show:</strong> Please arrive on time. Repeated no-shows or late cancellations may affect future bookings.</li>
                             <li>Prices and staff availability are confirmed by the branch and may change.</li>

@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (res.body.success) {
           sessionStorage.removeItem('localRegistrationOtp');
           LM.toast(res.body.message || 'Your email is verified. Taking you to sign in.', 'good');
-          setTimeout(function () { window.location.href = '../portal-login/index.html'; }, 1600);
+          setTimeout(function () { window.location.href = 'login.html'; }, 1600);
           return;
         }
 

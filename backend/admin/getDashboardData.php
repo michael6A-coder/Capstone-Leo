@@ -6,7 +6,7 @@
  * Returns everything every pages/admin/*.html page needs in one request:
  * branches (with computed revenue/rating), all bookings, staff (with
  * computed rating/completedCount/status/attendanceRate), inventory,
- * supplier orders, promotions, feedback, notifications, the aggregated
+ * promotions, feedback, notifications, the aggregated
  * customer directory, the admin's own profile, a per-branch service
  * catalog (used by the New Booking form), and the full service catalog
  * (active + inactive, used by the Service Menu manager). scripts/admin/shared-data.js
@@ -17,6 +17,7 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/LoyaltyTier.php';
 require_once '../config/Scheduling.php';
 
 sendCorsHeaders();
@@ -77,7 +78,7 @@ try {
             c.phone_number AS clientPhone,
             GROUP_CONCAT(DISTINCT s.service_name ORDER BY s.id SEPARATOR ', ') AS serviceName,
             a.employee_id AS staffId,
-            CASE WHEN e.id IS NOT NULL THEN CONCAT(e.first_name, ' ', e.last_name) ELSE NULL END AS staffName,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT CONCAT(se.first_name, ' ', se.last_name) ORDER BY sx.id SEPARATOR ', ') FROM appointment_services sx JOIN employees se ON se.id = COALESCE(sx.employee_id, a.employee_id) WHERE sx.appointment_id = a.id), CONCAT(e.first_name, ' ', e.last_name)) AS staffName,
             DATE_FORMAT(a.appointment_datetime, '%Y-%m-%d') AS date,
             DATE_FORMAT(a.appointment_datetime, '%h:%i %p') AS time,
             a.appointment_datetime AS startDateTime,
@@ -137,7 +138,12 @@ try {
             h.requests AS requestNotes,
             h.quote_price AS quotePrice,
             h.employee_id AS staffId,
-            CASE WHEN e.id IS NOT NULL THEN CONCAT(e.first_name, ' ', e.last_name) ELSE NULL END AS staffName,
+            COALESCE((SELECT GROUP_CONCAT(CONCAT(te.first_name, ' ', te.last_name) ORDER BY t.id SEPARATOR ', ') FROM home_service_staff t JOIN employees te ON te.id = t.employee_id WHERE t.home_service_request_id = h.id),
+                     CASE WHEN e.id IS NOT NULL THEN CONCAT(e.first_name, ' ', e.last_name) END) AS staffName,
+            (SELECT GROUP_CONCAT(t2.employee_id ORDER BY t2.id) FROM home_service_staff t2 WHERE t2.home_service_request_id = h.id) AS teamIds,
+            h.reschedule_count AS rescheduleCount,
+            (SELECT COALESCE(SUM(hp.amount), 0) FROM home_service_payments hp WHERE hp.home_service_request_id = h.id) AS amountPaid,
+            h.balance_checkout_url AS balancePayUrl,
             DATE_FORMAT(h.preferred_date, '%Y-%m-%d') AS date,
             DATE_FORMAT(h.preferred_time, '%h:%i %p') AS time,
             h.status AS status,
@@ -145,7 +151,7 @@ try {
             h.deposit_amount AS depositAmount,
             h.deposit_method AS paymentMethod,
             h.deposit_reference AS depositReference,
-            h.deposit_recorded_by IS NOT NULL AS depositVerified
+            (h.deposit_recorded_by IS NOT NULL OR (h.deposit_paid = 1 AND h.deposit_method = 'PayMongo')) AS depositVerified
         FROM home_service_requests h
         JOIN customers c ON c.id = h.customer_id
         LEFT JOIN employees e ON e.id = h.employee_id
@@ -156,7 +162,7 @@ try {
         $depositAmount = $row['depositAmount'] !== null ? (float) $row['depositAmount'] : null;
         $depositVerified = (bool) $row['depositVerified'];
         $remainingBalance = $quotePrice !== null
-            ? round($quotePrice - ($depositVerified ? $depositAmount : 0), 2)
+            ? max(0, round($quotePrice - (float) $row['amountPaid'], 2)) // every payment received (home_service_payments)
             : null;
         return [
             'id' => $row['id'],
@@ -183,6 +189,11 @@ try {
             'depositReference' => $row['depositReference'],
             'depositVerified' => $depositVerified,
             'isHomeService' => true,
+            // The whole team (home_service_staff); staffId is the team lead.
+            'staffIds' => $row['teamIds'] ? explode(',', $row['teamIds']) : ($row['staffId'] !== null ? [(string) $row['staffId']] : []),
+            'rescheduleCount' => (int) $row['rescheduleCount'],
+            'amountPaid' => (float) $row['amountPaid'],
+            'balancePayUrl' => $row['balancePayUrl'],
             'hasConflict' => false,
             'address' => $row['address'],
             'venue' => $row['address'],
@@ -211,6 +222,8 @@ try {
                 AND at.clock_out_time IS NULL) AS openAttendanceToday,
             (SELECT COUNT(DISTINCT DATE(at2.clock_in_time)) FROM attendance at2
                 WHERE at2.employee_id = e.id AND at2.clock_in_time >= (NOW() - INTERVAL 30 DAY)) AS attendanceDays,
+            (SELECT COUNT(*) FROM attendance at3 WHERE at3.employee_id = e.id AND at3.notes IS NOT NULL
+                AND at3.clock_in_time >= (NOW() - INTERVAL 30 DAY)) AS missedSignOuts,
             (SELECT GROUP_CONCAT(ss.service_id) FROM staff_services ss WHERE ss.employee_id = e.id) AS serviceIdsRaw,
             (SELECT GROUP_CONCAT(sv.service_name ORDER BY sv.id SEPARATOR ', ') FROM staff_services ss
                 JOIN services sv ON sv.id = ss.service_id WHERE ss.employee_id = e.id) AS specialties
@@ -235,6 +248,7 @@ try {
             'rating' => $row['avgRating'] !== null ? (float) $row['avgRating'] : 0,
             'status' => $status,
             'attendance' => min(100, (int) round(((int) $row['attendanceDays'] / 30) * 100)),
+            'missedSignOuts' => (int) $row['missedSignOuts'],
             'serviceIds' => $row['serviceIdsRaw'] ? explode(',', $row['serviceIdsRaw']) : [],
             'specialties' => $row['specialties'] ?: 'No specialties set',
         ];
@@ -260,20 +274,6 @@ try {
         ];
     }, $stmt->fetchAll());
 
-    // --- Supplier accounts (registered vendors that can log into the
-    // Supplier Portal -- separate from the free-text inventory.supplier
-    // label, which still works for orders never assigned an account) ---
-    $stmt = $pdo->query('
-        SELECT id, company_name AS companyName, contact_person AS contactPerson, phone, email, address, is_active AS isActive
-        FROM suppliers
-        ORDER BY company_name
-    ');
-    $supplierList = array_map(function ($row) {
-        $row['id'] = (string) $row['id'];
-        $row['isActive'] = (bool) $row['isActive'];
-        return $row;
-    }, $stmt->fetchAll());
-
     $stmt = $pdo->query("
         SELECT i.id, i.product_name AS name, br.branch_key AS branchId,
                i.quantity_on_hand AS stock, i.reorder_level AS minQty,
@@ -290,26 +290,6 @@ try {
         $row['costPrice'] = (float) $row['costPrice'];
         $row['salePrice'] = $row['salePrice'] !== null ? (float) $row['salePrice'] : null;
         $row['isActive'] = (bool) $row['isActive'];
-        return $row;
-    }, $stmt->fetchAll());
-
-    $stmt = $pdo->query("
-        SELECT so.id, so.reference_code AS referenceCode, i.product_name AS itemName,
-               br.branch_key AS branchId, so.supplier_id AS supplierId, COALESCE(so.supplier_name, i.supplier) AS supplierName,
-               so.quantity AS qty, DATE_FORMAT(so.created_at, '%Y-%m-%d') AS orderDate,
-               DATE_FORMAT(so.expected_date, '%Y-%m-%d') AS eta, so.status,
-               CASE WHEN u.id IS NOT NULL THEN u.display_name ELSE NULL END AS receivedBy
-        FROM supplier_orders so
-        JOIN inventory i ON i.id = so.inventory_id
-        LEFT JOIN branches br ON br.id = i.branch_id
-        LEFT JOIN users u ON u.id = so.received_by
-        ORDER BY so.id DESC
-    ");
-    $supplierOrders = array_map(function ($row) {
-        $row['id'] = (string) $row['id'];
-        $row['qty'] = (int) $row['qty'];
-        $row['supplierId'] = $row['supplierId'] !== null ? (string) $row['supplierId'] : null;
-        $row['supplierName'] = $row['supplierName'] ?: 'Unspecified Supplier';
         return $row;
     }, $stmt->fetchAll());
 
@@ -414,6 +394,7 @@ try {
             c.loyalty_points AS loyaltyPoints,
             GROUP_CONCAT(DISTINCT br.branch_key) AS branchKeys,
             COUNT(a.id) AS visits,
+            SUM(CASE WHEN " . LoyaltyTier::VISIT_CONDITION . " THEN 1 ELSE 0 END) AS recentVisits,
             COALESCE(SUM(CASE WHEN a.status = 'Completed' THEN a.total_price ELSE 0 END), 0) AS totalSpent,
             MAX(a.appointment_datetime) AS lastVisitRaw
         FROM customers c
@@ -434,6 +415,9 @@ try {
             'branchIds' => $row['branchKeys'] ? explode(',', $row['branchKeys']) : [],
             'visits' => (int) $row['visits'],
             'loyaltyPoints' => (int) $row['loyaltyPoints'],
+            // Frequency-based status (backend/config/LoyaltyTier.php).
+            'loyaltyTier' => LoyaltyTier::fromVisits((int) $row['recentVisits'])['tier'],
+            'recentVisits' => (int) $row['recentVisits'],
             'totalSpent' => (float) $row['totalSpent'],
             'lastVisit' => $row['lastVisitRaw'] ? date('Y-m-d', strtotime($row['lastVisitRaw'])) : null,
         ];
@@ -512,9 +496,7 @@ try {
         'bookings' => $bookings,
         'staffList' => $staffList,
         'cashierList' => $cashierList,
-        'supplierList' => $supplierList,
         'inventory' => $inventory,
-        'supplierOrders' => $supplierOrders,
         'promotions' => $promotions,
         'weddingPackages' => $weddingPackages,
         'feedback' => $feedback,

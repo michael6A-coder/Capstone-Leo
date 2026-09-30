@@ -243,6 +243,60 @@ function sendAppointmentReminderEmail(
 }
 
 /**
+ * Sends the account-setup link to a Staff/Cashier account an Admin just
+ * created. Returns true if a real email was sent, false if it fell back to
+ * the log-file simulation.
+ */
+function sendAccountSetupEmail(string $email, string $name, string $role, string $setupUrl): bool
+{
+    $body = "Hi {$name},\n\n"
+        . "An Admin created a {$role} account for you at Leo Mejillano Salon & Aesthetics. "
+        . "Follow this link to set your password and activate it:\n\n{$setupUrl}\n\n"
+        . "This link expires in 24 hours. If you weren't expecting this, you can ignore this email.";
+    $credentialsPath = __DIR__ . '/mail_credentials.php';
+
+    if (!file_exists($credentialsPath)) {
+        logSimulatedEmail('Account Setup', $email, "{$setupUrl} (expires in 24 hours)");
+        return false;
+    }
+
+    $credentials = require $credentialsPath;
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host = $credentials['smtp_host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $credentials['smtp_username'];
+        $mail->Password = $credentials['smtp_password'];
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = $credentials['smtp_port'];
+
+        $mail->setFrom($credentials['from_email'], $credentials['from_name']);
+        $mail->addAddress($email);
+
+        $mail->Subject = 'Set up your Leo Mejillano Salon & Aesthetics account';
+        $mail->isHTML(true);
+        $mail->Body = '<div style="font-family:Arial, Helvetica, sans-serif;font-size:15px;color:#1a1a1a;line-height:1.5;">'
+            . '<p>Hi ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',</p>'
+            . '<p>An Admin created a ' . htmlspecialchars($role, ENT_QUOTES, 'UTF-8')
+            . ' account for you at Leo Mejillano Salon &amp; Aesthetics. Follow the link below to set your password and activate it.</p>'
+            . '<p style="margin:24px 0;"><a href="' . htmlspecialchars($setupUrl, ENT_QUOTES, 'UTF-8') . '" '
+            . 'style="display:inline-block;background:#7a1f3d;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Set your password</a></p>'
+            . '<p>This link expires in 24 hours. If you weren\'t expecting this, you can ignore this email.</p>'
+            . '</div>';
+        $mail->AltBody = $body;
+
+        $mail->send();
+        return true;
+    } catch (PHPMailerException $e) {
+        error_log('Account setup email send failed: ' . $mail->ErrorInfo);
+        logSimulatedEmail('Account Setup (send failed, see error_log)', $email, "{$setupUrl} (expires in 24 hours)");
+        return false;
+    }
+}
+
+/**
  * Sends the guest-booking verification OTP to $email. Returns true if a
  * real email was sent, false if it fell back to the log-file simulation.
  */
@@ -285,6 +339,58 @@ function sendBookingOtpEmail(string $email, string $code): bool
     } catch (PHPMailerException $e) {
         error_log('Booking OTP email send failed: ' . $mail->ErrorInfo);
         logSimulatedEmail('Booking Verification OTP (send failed, see error_log)', $email, "{$code} (expires in 10 minutes)");
+        return false;
+    }
+}
+
+/**
+ * Sends a plain booking/status notification (no code to highlight) to
+ * $email. Used by EmailOutbox for every queued customer email. Returns true
+ * once the message is handled -- either really sent, or written to
+ * logs/email.log when mail_credentials.php hasn't been set up -- and false
+ * only when a real send was attempted and failed (so the outbox retries it).
+ */
+function sendNotificationEmail(string $email, string $subject, string $message): bool
+{
+    $credentialsPath = __DIR__ . '/mail_credentials.php';
+
+    if (!file_exists($credentialsPath)) {
+        logSimulatedEmail($subject, $email, str_replace("\n", ' | ', $message));
+        return true;
+    }
+
+    $credentials = require $credentialsPath;
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host = $credentials['smtp_host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $credentials['smtp_username'];
+        $mail->Password = $credentials['smtp_password'];
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port = $credentials['smtp_port'];
+        $mail->CharSet = 'UTF-8';
+
+        $mail->setFrom($credentials['from_email'], $credentials['from_name']);
+        $mail->addAddress($email);
+
+        $mail->Subject = $subject;
+        $mail->isHTML(true);
+        $paragraphs = array_map(
+            fn($line) => '<p>' . nl2br(htmlspecialchars($line, ENT_QUOTES, 'UTF-8')) . '</p>',
+            array_filter(explode("\n\n", $message), fn($p) => trim($p) !== '')
+        );
+        $mail->Body = '<div style="font-family:Arial, Helvetica, sans-serif;font-size:15px;color:#1a1a1a;line-height:1.5;">'
+            . implode('', $paragraphs)
+            . '<p style="color:#777;font-size:12px;">Leo Mejillano Salon &amp; Beauty &middot; This is an automated message.</p>'
+            . '</div>';
+        $mail->AltBody = $message;
+
+        $mail->send();
+        return true;
+    } catch (PHPMailerException $e) {
+        error_log('Notification email send failed: ' . $mail->ErrorInfo);
         return false;
     }
 }

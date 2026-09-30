@@ -51,7 +51,7 @@ try {
     }
     $employeeId = (int) $employee['id'];
 
-    $stmt = $pdo->prepare('SELECT product_name, branch_id, quantity_on_hand, reorder_level FROM inventory WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT product_name, branch_id, quantity_on_hand, reorder_level FROM inventory WHERE id = ? AND is_active = 1'); // archived items can't be logged
     $stmt->execute([$itemId]);
     $item = $stmt->fetch();
     if (!$item) {

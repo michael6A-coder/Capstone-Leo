@@ -17,10 +17,12 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/CustomerNotifier.php';
 require_once '../config/EodLock.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Cashier', 'Admin'], true)) {
@@ -132,7 +134,7 @@ try {
     if (!empty($products)) {
         $ids = array_column($products, 'id');
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = $pdo->prepare("SELECT id, product_name AS name, branch_id, quantity_on_hand AS stock, sale_price AS price FROM inventory WHERE id IN ($placeholders)");
+        $stmt = $pdo->prepare("SELECT id, product_name AS name, branch_id, quantity_on_hand AS stock, sale_price AS price FROM inventory WHERE id IN ($placeholders) AND is_active = 1"); // archived items can't be sold
         $stmt->execute($ids);
         $inventoryById = [];
         foreach ($stmt->fetchAll() as $row) {
@@ -145,6 +147,11 @@ try {
             if (!$product || (int) $product['branch_id'] !== $appointmentBranchId) {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'message' => 'One or more retail products are invalid.']);
+                exit();
+            }
+            if ($product['price'] === null || (float) $product['price'] <= 0) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => "{$product['name']} is a salon supply and isn't for sale."]);
                 exit();
             }
             if ((int) $product['stock'] < $entry['qty']) {

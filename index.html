@@ -7,7 +7,36 @@
   <title>Leo Mejillano Salon & Beauty — Official Web Portal</title>
   <meta name="description"
     content="Leo Mejillano Salon & Beauty — hair, skin, nails, makeup, brows, lashes, and event styling across three Albay branches." />
-  <link rel="stylesheet" href="assets/css/main.build.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bronze: 'rgb(var(--c-bronze) / <alpha-value>)',
+            copper: {
+              DEFAULT: 'rgb(var(--c-copper) / <alpha-value>)',
+              pale:    'rgb(var(--c-copper-pale) / <alpha-value>)',
+              dark:    'rgb(var(--c-copper-dark) / <alpha-value>)'
+            },
+            ink:   'rgb(var(--c-ink) / <alpha-value>)',
+            panel: 'rgb(var(--c-panel) / <alpha-value>)',
+            plum:  'rgb(var(--c-plum) / <alpha-value>)',
+            sand: {
+              100: 'rgb(var(--c-sand-100) / <alpha-value>)',
+              200: 'rgb(var(--c-sand-200) / <alpha-value>)'
+            }
+          },
+          fontFamily: {
+            body:    ['Segoe UI', 'Tahoma', 'Verdana', 'Arial', 'sans-serif'],
+            display: ['Georgia', 'Cambria', 'Times New Roman', 'serif']
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="assets/css/home-theme.css" />
 </head>
 
 <body class="bg-sand-100 text-ink font-body antialiased">
@@ -59,13 +88,6 @@
           class="nav-tab-link h-full flex items-center hover:text-plum transition-colors px-1">
           Gallery
         </button>
-
-        <button id="searchBtn" class="hover:text-plum transition-colors ml-1" aria-label="Search App">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-          </svg>
-        </button>
       </nav>
 
       <div class="flex items-center gap-3 shrink-0">
@@ -88,7 +110,7 @@
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
             <circle cx="12" cy="7" r="4" />
           </svg>
-          Team Portal
+          Login
         </button>
         <button onclick="openBookingModal()"
           class="hidden sm:inline-flex btn-sheen items-center justify-center rounded-full bg-plum text-white text-[13px] font-bold px-6 py-3 hover:brightness-110 transition whitespace-nowrap">
@@ -150,23 +172,13 @@
           " class="py-3 text-left border-b border-bronze/10 font-bold text-[12px] tracking-widest uppercase text-ink">
         Gallery
       </button>
-      <button onclick="
-            openSearchOverlay();
-            setMobileNav(false);
-          " class="py-3 text-left border-b border-bronze/10 font-semibold flex items-center gap-2 text-ink mt-2">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8" />
-          <path d="M21 21l-4.35-4.35" />
-        </svg>
-        Search
-      </button>
       <button onclick="goToPortalLogin()"
         class="py-3 text-left border-b border-bronze/10 font-semibold flex items-center gap-2 text-ink">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
           <circle cx="12" cy="7" r="4" />
         </svg>
-        Team Portal
+        Login
       </button>
       <button onclick="toggleTheme()"
         class="py-3 text-left border-b border-bronze/10 font-semibold flex items-center gap-2 text-ink">
@@ -184,33 +196,8 @@
     </nav>
   </header>
 
-  <div id="searchOverlay"
-    class="fixed inset-0 z-100 bg-panel/95 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5">
-    <button id="closeSearch" class="absolute top-8 right-8 text-ink/50 hover:text-plum transition-colors p-2 z-10">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M18 6L6 18M6 6l12 12" />
-      </svg>
-    </button>
-    <div class="w-full max-w-2xl transform translate-y-8 transition-transform duration-500" id="searchBox">
-      <p class="text-[11px] font-bold tracking-widest uppercase text-copper mb-4 text-center">
-        Interactive Portal Search
-      </p>
-      <div class="relative">
-        <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-ink/40 w-6 h-6" fill="none" stroke="currentColor"
-          stroke-width="2" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="8" />
-          <path d="M21 21l-4.35-4.35" />
-        </svg>
-        <input type="search" id="searchInput" placeholder="Search services, stylists, or products..." autocomplete="off"
-          aria-label="Search services, stylists, and products"
-          class="w-full bg-transparent border-b-2 border-ink/20 text-2xl sm:text-3xl font-display py-4 pl-14 pr-4 focus:outline-none focus:border-plum text-ink placeholder:text-ink/20 transition-colors" />
-      </div>
-      <div id="searchResults" class="mt-6 flex flex-col gap-2 max-h-[40vh] overflow-y-auto px-2"></div>
-    </div>
-  </div>
-
   <div id="bookingModalOverlay"
-    class="fixed inset-0 z-100 bg-black/70 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5 py-6">
+    class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5 py-6">
     <div
       class="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-panel rounded-3xl shadow-2xl transform scale-95 transition-transform duration-300 p-7 sm:p-9 relative"
       id="bookingModalBox">
@@ -228,7 +215,7 @@
         <p class="text-xs text-ink/60 mb-6">
           Choose your services and schedule, review your details, then verify your email. You can book without creating an account.
         </p>
-        <div class="grid sm:grid-cols-2 gap-3">
+        <div class="grid gap-3">
           <button type="button" onclick="continueAsGuestBooking()"
             class="rounded-2xl border border-plum/30 bg-plum/5 p-5 text-left hover:border-plum hover:bg-plum/10 transition">
             <span class="block text-[11px] font-bold tracking-widest uppercase text-plum">New appointment</span>
@@ -237,13 +224,6 @@
               enter your name,
               mobile number, and email.</span>
           </button>
-          <a href="pages/portal-login/index.html"
-            class="rounded-2xl border border-bronze/30 bg-sand-100 p-5 text-left hover:border-plum hover:bg-panel transition">
-            <span class="block text-[11px] font-bold tracking-widest uppercase text-copper">Your account</span>
-            <span class="block font-display text-xl mt-2">Client Portal</span>
-            <span class="block text-[13px] text-ink/60 mt-2 leading-relaxed">Sign in to book appointments, view your
-              bookings, and manage your profile.</span>
-          </a>
         </div>
         <div class="mt-5 rounded-xl border border-bronze/30 bg-sand-100 p-4 text-center">
           <p class="text-sm text-ink/60">Already booked as a guest?</p>
@@ -289,7 +269,7 @@
             <label for="bookBranchSelect"
               class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1">Select branch</label>
             <select id="bookBranchSelect"
-              class="w-full px-4 py-2.5 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition"
+              class="w-full px-4 py-2.5 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition disabled:opacity-60 disabled:cursor-not-allowed"
               required>
               <option value="">Choose a branch...</option>
               <option value="1">
@@ -298,6 +278,7 @@
               <option value="2">Yashano Mall — Skin Brows</option>
               <option value="3">Cabangan — Lash &amp; Brows</option>
             </select>
+            <p id="bookBranchLockNote" class="hidden text-[12px] text-ink/50 mt-1.5"></p>
           </div>
 
           <div>
@@ -326,16 +307,29 @@
 
           <div id="bookStaffSection" class="hidden">
             <label class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1">Select staff</label>
-            <p class="text-[12px] text-ink/60 mb-2">Choose an available staff member for your selected service and schedule.</p>
+            <p class="text-[12px] text-ink/60 mb-2">Pick a stylist for each service. <span class="text-[#15803D] font-semibold">Available</span> stylists are free for that service; <span class="text-[#9F1239] font-semibold">Busy</span> ones are still with another client.</p>
             <div id="bookStaffList" class="rounded-xl border border-bronze/50 bg-sand-100 p-3 text-[13px] text-ink/50">
               Choose your branch, services, date, and time to see available staff.
+            </div>
+            <div id="bookWaitlist" class="hidden mt-2 rounded-xl border border-dashed border-bronze/60 p-3 text-[12px] text-ink/60 space-y-2">
+              <p><b class="text-ink">Preferred stylist booked at this time?</b> Get an email if they have an opening on this date.</p>
+              <select id="bookWaitlistStaff" aria-label="Stylist to wait for"
+                class="w-full px-3 py-2 border border-bronze/50 bg-sand-100 rounded-lg text-sm focus:outline-none focus:border-plum"></select>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input id="bookWaitlistName" type="text" autocomplete="name" placeholder="Your name"
+                  class="px-3 py-2 border border-bronze/50 bg-sand-100 rounded-lg text-sm focus:outline-none focus:border-plum" />
+                <input id="bookWaitlistEmail" type="email" autocomplete="email" placeholder="you@email.com"
+                  class="px-3 py-2 border border-bronze/50 bg-sand-100 rounded-lg text-sm focus:outline-none focus:border-plum" />
+              </div>
+              <button type="button" id="bookWaitlistBtn"
+                class="rounded-full border border-plum text-plum font-bold text-[12px] px-4 py-2 hover:bg-plum hover:text-white transition disabled:opacity-60">Notify me</button>
             </div>
           </div>
 
           <div id="bookDepositGate" class="hidden rounded-xl border border-plum/30 bg-plum/5 p-4">
             <p class="text-[11px] font-bold tracking-widest uppercase text-plum mb-1">GUEST RESERVATION PAYMENT REQUIRED</p>
             <p class="text-sm text-ink/60 mb-2">Your selected schedule is available. Complete the required guest reservation payment below to continue.</p>
-            <p class="text-sm text-ink/60 mb-2">Depending on the selected service, you may need to pay 50% of the total or the full amount.</p>
+            <p class="text-sm text-ink/60 mb-2">Pay a deposit (50% of the total, minimum ₱100 — some services require full payment) or pay the full amount now.</p>
             <p class="text-sm text-ink/60 mb-3">Your booking will remain Waiting for Confirmation until the branch verifies your payment.</p>
             <p id="bookQuoteError" class="text-sm text-copper-dark mb-2" role="status"></p>
             <dl class="space-y-2 text-sm border-y border-bronze/30 py-3 mb-3">
@@ -347,30 +341,34 @@
             </dl>
 
             <div id="bookDepositForm" class="space-y-3">
+              <fieldset id="bookPaymentPlanWrap" class="hidden">
+                <legend class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1">How much to pay now</legend>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                  <label class="flex items-center gap-2 border border-bronze/50 bg-sand-100 rounded-xl px-3 py-2.5 cursor-pointer has-[:checked]:border-plum has-[:checked]:text-plum">
+                    <input type="radio" name="bookPaymentPlan" value="deposit" checked class="accent-plum"> Deposit
+                  </label>
+                  <label class="flex items-center gap-2 border border-bronze/50 bg-sand-100 rounded-xl px-3 py-2.5 cursor-pointer has-[:checked]:border-plum has-[:checked]:text-plum">
+                    <input type="radio" name="bookPaymentPlan" value="full" class="accent-plum"> Full amount
+                  </label>
+                </div>
+              </fieldset>
               <div>
                 <label for="bookDepositMethod"
                   class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1">Payment method</label>
                 <select id="bookDepositMethod"
                   class="w-full px-4 py-2.5 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition">
                   <option value="">Choose a payment method...</option>
-                  <option value="Cash">Cash</option>
-                  <option value="GCash">GCash</option>
-                  <option value="Maya">Maya</option>
-                  <option value="" disabled>Card — Coming Soon</option>
+                  <option value="PayMongo">Pay Online — GCash, Maya or Card</option>
+                  <option value="Cash">Cash — pay at the branch</option>
                 </select>
+              </div>
+              <div id="bookDepositOnlineNote" class="hidden text-[12px] text-ink/55 bg-sand-100 border border-bronze/40 rounded-lg p-3">
+                After you confirm, you'll be taken to PayMongo's secure checkout to pay with GCash, Maya or card. Your
+                slot is held for 30 minutes while you pay — no reference number needed.
               </div>
               <div id="bookDepositCashNote" class="hidden text-[12px] text-ink/55 bg-sand-100 border border-bronze/40 rounded-lg p-3">
                 Cash deposits can't be verified remotely — bring the deposit amount to the branch. Your slot is held as
                 <b>Pending</b> (not locked) until you pay in person and staff confirm it.
-              </div>
-              <div id="bookDepositRefWrap" class="hidden">
-                <label for="bookDepositRef"
-                  class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1">GCash / Maya reference
-                  number</label>
-                <input id="bookDepositRef" type="text" placeholder="e.g. the transaction reference from your app"
-                  class="w-full px-4 py-2.5 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition" />
-                <p class="text-[11px] text-ink/40 mt-1">Send the deposit to the branch's GCash/Maya number first, then
-                  enter the reference here. Staff will verify it against their account before your slot is locked.</p>
               </div>
               <button type="button" id="bookDepositLockBtn"
                 class="btn-sheen w-full rounded-full bg-plum text-white font-bold text-sm py-3 hover:brightness-110 transition disabled:opacity-60 disabled:cursor-not-allowed">
@@ -433,9 +431,9 @@
               <ul class="list-disc list-inside space-y-1">
                 <li><b>Reservation payment:</b> A reservation payment is required to hold your appointment slot.</li>
                 <li><b>50% or full payment:</b> Depending on the service selected, you must pay either a 50% down payment or the full amount upfront — the required amount is shown before you book.</li>
-                <li><b>Payment verification:</b> GCash/Maya payments are verified by the branch against the reference number you provide; Cash must be settled in person. Your payment stays "Awaiting Verification" until staff confirm it — customers can never verify their own payment.</li>
+                <li><b>Payment verification:</b> Online payments (GCash, Maya or card) are processed securely by PayMongo; Cash must be settled in person. Your payment stays "Awaiting Verification" until staff confirm it — customers can never verify their own payment.</li>
                 <li><b>Confirmation rules:</b> Your requested time is held as <b>Pending</b> until the branch verifies your payment and confirms it — it is not guaranteed until confirmed.</li>
-                <li><b>Cancellation:</b> You may cancel your booking; cancel as early as possible so the slot can be offered to someone else.</li>
+                <li><b>Deposit &amp; rescheduling policy:</b> Reservation deposits are <u>non-refundable</u>. Need a different time? Reschedule instead (online up to 24 hours before, or by contacting the branch) and your deposit carries over. If you cancel or miss your appointment, the deposit is kept, but that booking can still be rescheduled later using the deposit.</li>
                 <li><b>Rescheduling:</b> You may request to reschedule; please do so as early as possible, subject to availability.</li>
                 <li><b>No-show:</b> Please arrive on time. Repeated no-shows or late cancellations may affect future bookings.</li>
                 <li>Prices and staff availability are confirmed by the branch and may change.</li>
@@ -553,7 +551,7 @@
   </div>
 
   <div id="trackModalOverlay"
-    class="fixed inset-0 z-100 bg-black/70 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5 py-6">
+    class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5 py-6">
     <div
       class="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-panel rounded-3xl shadow-2xl transform scale-95 transition-transform duration-300 p-7 sm:p-9 relative"
       id="trackModalBox">
@@ -648,8 +646,44 @@
     </div>
   </div>
 
+  <div id="staffProfileOverlay"
+    class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center px-5 py-6">
+    <div
+      class="w-full max-w-md max-h-[90vh] overflow-y-auto bg-panel rounded-3xl shadow-2xl transform scale-95 transition-transform duration-300 p-7 sm:p-9 relative"
+      id="staffProfileBox">
+      <button id="closeStaffProfile" class="absolute top-5 right-5 text-ink/50 hover:text-plum transition-colors p-1 z-10"
+        aria-label="Close">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 6L6 18M6 6l12 12" />
+        </svg>
+      </button>
+
+      <div class="flex items-center gap-4">
+        <div id="staffProfilePhotoWrap" class="w-16 h-16 rounded-full bg-plum text-white font-bold flex items-center justify-center text-lg shrink-0 overflow-hidden">
+        </div>
+        <div class="min-w-0">
+          <h3 class="font-display text-xl text-ink truncate" id="staffProfileName"></h3>
+          <p class="text-[11px] font-bold uppercase tracking-widest text-copper-dark mt-0.5" id="staffProfilePosition"></p>
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center gap-2" id="staffProfileStatusRow">
+        <span class="staff-status-dot" id="staffProfileStatusDot"></span>
+        <span class="text-sm font-bold text-ink" id="staffProfileStatusLabel"></span>
+      </div>
+      <p class="text-[12.5px] text-ink/55 mt-1" id="staffProfileStatusNote"></p>
+
+      <dl class="mt-6 pt-5 border-t border-bronze/25 space-y-2 text-sm" id="staffProfileDetails"></dl>
+
+      <button id="staffProfileBookBtn"
+        class="btn-sheen w-full mt-6 rounded-full bg-plum text-white font-bold text-sm py-3.5 hover:brightness-110 transition">
+        Book an appointment
+      </button>
+    </div>
+  </div>
+
   <div id="lightboxOverlay"
-    class="fixed inset-0 z-120 bg-black/95 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center p-5 cursor-zoom-out">
+    class="fixed inset-0 z-[120] bg-black/95 backdrop-blur-md opacity-0 pointer-events-none transition-all duration-300 flex items-center justify-center p-5 cursor-zoom-out">
     <button id="closeLightboxBtn"
       class="absolute top-6 right-6 text-white/50 hover:text-white transition-colors p-2 z-10 cursor-pointer">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -835,142 +869,7 @@
             </p>
           </div>
 
-          <div class="grid md:grid-cols-3 gap-5">
-            <article class="sr sr-d1 branch-pick bg-sand-100 border border-bronze/25 rounded-3xl p-7 flex flex-col">
-              <div class="flex items-start justify-between gap-3">
-                <span
-                  class="text-[10px] font-bold tracking-[0.16em] uppercase text-copper-dark bg-copper/15 rounded-full px-3 py-1.5">Flagship</span>
-                <span class="text-[11px] font-bold flex items-center gap-1.5 text-ink/55">
-                  <span class="live-dot" data-live="daraga"></span>
-                  <span data-live-label="daraga">—</span>
-                </span>
-              </div>
-              <h3 class="font-display text-[1.6rem] leading-tight mt-5">
-                Daraga Main
-              </h3>
-              <p class="text-[13px] text-ink/55 mt-1.5">
-                Salon &amp; Make-Up Studio · Regidor St.
-              </p>
-              <p class="text-sm text-ink/70 mt-4 leading-relaxed">
-                The full menu hair, nails, skin, brows, lashes, and event
-                make-up, plus the skin care centre.
-              </p>
-              <div class="flex flex-wrap gap-2 mt-5">
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Hair</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Nails</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Skin</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Make-up</span>
-              </div>
-              <p class="text-[12px] text-ink/50 mt-5 flex items-center gap-2">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                  aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v5l3 2" />
-                </svg>
-                8:00 AM – 8:00 PM, daily
-              </p>
-              <div class="flex gap-2.5 mt-6 pt-6 border-t border-bronze/25">
-                <button onclick="goBranchMenu('daraga')"
-                  class="flex-1 rounded-full bg-plum text-white text-[13px] font-bold py-3 hover:brightness-110 transition">
-                  See menu
-                </button>
-                <button onclick="bookService('', '', 'daraga')"
-                  class="flex-1 rounded-full border border-ink/20 text-[13px] font-bold py-3 hover:border-plum hover:text-plum transition">
-                  Book here
-                </button>
-              </div>
-            </article>
-
-            <article class="sr sr-d2 branch-pick bg-sand-100 border border-bronze/25 rounded-3xl p-7 flex flex-col">
-              <div class="flex items-start justify-between gap-3">
-                <span
-                  class="text-[10px] font-bold tracking-[0.16em] uppercase text-copper-dark bg-copper/15 rounded-full px-3 py-1.5">Mall
-                  studio</span>
-                <span class="text-[11px] font-bold flex items-center gap-1.5 text-ink/55">
-                  <span class="live-dot" data-live="yashano"></span>
-                  <span data-live-label="yashano">—</span>
-                </span>
-              </div>
-              <h3 class="font-display text-[1.6rem] leading-tight mt-5">
-                Yashano Mall
-              </h3>
-              <p class="text-[13px] text-ink/55 mt-1.5">
-                Skin Brows · 2F, beside Angel's Pizza
-              </p>
-              <p class="text-sm text-ink/70 mt-4 leading-relaxed">
-                Facials, peels, and brow work in the middle of Legazpi easy
-                to slot into a mall run.
-              </p>
-              <div class="flex flex-wrap gap-2 mt-5">
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Skin</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Brows</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Lashes</span>
-              </div>
-              <p class="text-[12px] text-ink/50 mt-5 flex items-center gap-2">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                  aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v5l3 2" />
-                </svg>
-                9:30 AM – 8:00 PM, daily
-              </p>
-              <div class="flex gap-2.5 mt-6 pt-6 border-t border-bronze/25">
-                <button onclick="goBranchMenu('yashano')"
-                  class="flex-1 rounded-full bg-plum text-white text-[13px] font-bold py-3 hover:brightness-110 transition">
-                  See menu
-                </button>
-                <button onclick="bookService('', '', 'yashano')"
-                  class="flex-1 rounded-full border border-ink/20 text-[13px] font-bold py-3 hover:border-plum hover:text-plum transition">
-                  Book here
-                </button>
-              </div>
-            </article>
-
-            <article class="sr sr-d3 branch-pick bg-sand-100 border border-bronze/25 rounded-3xl p-7 flex flex-col">
-              <div class="flex items-start justify-between gap-3">
-                <span
-                  class="text-[10px] font-bold tracking-[0.16em] uppercase text-copper-dark bg-copper/15 rounded-full px-3 py-1.5">Lash
-                  &amp; brow hub</span>
-                <span class="text-[11px] font-bold flex items-center gap-1.5 text-ink/55">
-                  <span class="live-dot" data-live="cabangan"></span>
-                  <span data-live-label="cabangan">—</span>
-                </span>
-              </div>
-              <h3 class="font-display text-[1.6rem] leading-tight mt-5">
-                Cabangan
-              </h3>
-              <p class="text-[13px] text-ink/55 mt-1.5">
-                Lash &amp; Brows · Rizal St., Brgy. 18
-              </p>
-              <p class="text-sm text-ink/70 mt-4 leading-relaxed">
-                Lash extensions, lifts, and brow shaping plus cuts, colour,
-                and rebonding.
-              </p>
-              <div class="flex flex-wrap gap-2 mt-5">
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Lashes</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Brows</span>
-                <span class="text-[11px] font-semibold rounded-full border border-bronze/40 px-3 py-1.5">Hair</span>
-              </div>
-              <p class="text-[12px] text-ink/50 mt-5 flex items-center gap-2">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-                  aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 7v5l3 2" />
-                </svg>
-                8:00 AM – 8:00 PM, daily
-              </p>
-              <div class="flex gap-2.5 mt-6 pt-6 border-t border-bronze/25">
-                <button onclick="goBranchMenu('cabangan')"
-                  class="flex-1 rounded-full bg-plum text-white text-[13px] font-bold py-3 hover:brightness-110 transition">
-                  See menu
-                </button>
-                <button onclick="bookService('', '', 'cabangan')"
-                  class="flex-1 rounded-full border border-ink/20 text-[13px] font-bold py-3 hover:border-plum hover:text-plum transition">
-                  Book here
-                </button>
-              </div>
-            </article>
-          </div>
+          <div class="grid md:grid-cols-3 gap-5" id="branchPickerGrid"></div>
         </div>
       </section>
 
@@ -1255,7 +1154,7 @@
                 Log in or create an account to book appointments, view your
                 bookings, and manage your profile.
               </p>
-              <a href="pages/portal-login/index.html"
+              <a href="pages/login/login.html"
                 class="inline-block mt-5 rounded-full bg-plum text-white font-bold text-sm px-6 py-3 hover:brightness-110 transition">
                 Client Portal
               </a>
@@ -1271,7 +1170,7 @@
               </p>
               <button onclick="goToPortalLogin()"
                 class="mt-5 rounded-full bg-plum text-white font-bold text-sm px-6 py-3 hover:brightness-110 transition">
-                Team Portal
+                Login
               </button>
             </div>
             <div class="rounded-[26px] border border-bronze/30 bg-sand-100 p-7">
@@ -2015,8 +1914,8 @@
                   <div>
                     <label class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1.5">Email
                       Address
-                      <span class="text-ink/30 normal-case tracking-normal font-semibold">(optional)</span></label>
-                    <input id="hsEmail" type="email" placeholder="Enter your email address"
+                      <span class="text-ink/40 normal-case tracking-normal font-semibold">(used to track &amp; reschedule)</span></label>
+                    <input id="hsEmail" type="email" required placeholder="Enter your email address"
                       class="w-full px-4 py-3 border border-bronze/50 bg-sand-100 rounded-xl text-sm focus:outline-none focus:border-plum transition" />
                   </div>
                 </div>
@@ -2126,7 +2025,7 @@
                   <div id="hsWeddingPackageGrid" class="grid sm:grid-cols-2 gap-4"></div>
                   <div id="hsWeddingLiveSummary" class="hidden mt-6 rounded-2xl border border-copper/35 bg-copper/10 p-5">
                     <span class="text-[10px] font-bold uppercase tracking-widest text-copper-dark">Package Summary</span>
-                    <p class="text-[12px] text-ink/55 mt-2">The remaining balance shown is after the reservation fee is paid. No payment has been collected with this request.</p>
+                    <p class="text-[12px] text-ink/55 mt-2">No payment now. The reservation fee (DP) is an estimate until your quote — you pay it online after review; the remaining balance is paid on the event day.</p>
                     <div class="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm mt-3">
                       <p><span class="text-ink/50">Wedding Package:</span> <b data-wedding-summary="name"></b></p>
                       <p><span class="text-ink/50">Package Price:</span> <b data-wedding-summary="price"></b></p>
@@ -2276,8 +2175,23 @@
                         <li>Additional services may change the final price.</li>
                         <li>Please provide accurate venue and contact details.</li>
                         <li>Cancellation or rescheduling should be requested as early as possible.</li>
-                        <li>Wedding Package D requires a ₱2,000 reservation fee.</li>
+                        <li>A reservation fee (DP) is required to confirm your booking: ₱2,000 fixed for Wedding Package D; for other packages and events it is set in your quote (usually about 30%). Pay it online via GCash, Maya or card (PayMongo). The DP is non-refundable but carries over if you reschedule.</li>
                       </ul>
+                    </div>
+                    <!-- How payment works + estimated DP -->
+                    <div class="mt-4 rounded-2xl bg-plum/5 border border-plum/20 p-4 text-[12.5px] text-ink/75 space-y-2.5">
+                      <p class="font-bold text-plum text-[13px]">How payment works</p>
+                      <ol class="list-decimal list-inside space-y-1 leading-relaxed">
+                        <li><b>No payment now</b> — just submit this request.</li>
+                        <li>We review it and email your <b>quote</b> with a <b>reservation fee (DP)</b>.</li>
+                        <li>Pay the DP <b>online via GCash, Maya or card</b> (PayMongo) from the email link or <b>Track Your Home Service</b> — your request is then <b>confirmed automatically</b>.</li>
+                        <li>Pay the <b>remaining balance on the event day</b>.</li>
+                      </ol>
+                      <div class="rounded-xl bg-panel border border-plum/20 p-3">
+                        <p id="hsDpEstimate">Your DP is set in your quote.</p>
+                        <p class="text-[11px] text-ink/50 mt-1">The final amount is confirmed in your quote.</p>
+                      </div>
+                      <p class="text-[11px] text-ink/55">The DP is <b>non-refundable</b>, but it carries over if you <b>reschedule</b> (online, at least 3 days before the event).</p>
                     </div>
                     <label class="flex items-start gap-2 mt-3 text-[12px] text-ink/70 cursor-pointer">
                       <input type="checkbox" id="hsAgreeTerms" class="mt-0.5 accent-plum" required>
@@ -2398,20 +2312,24 @@
             <h3 class="font-display text-2xl sm:text-3xl mt-3">
               Track Your Home Service
             </h3>
+            <p class="text-[14px] text-ink/60 mt-3 leading-relaxed">
+              Check your request's status, pay your reservation fee, or move it to a new date — using the
+              reference number and the email address you gave when you requested.
+            </p>
           </div>
           <div class="bg-sand-100 border border-bronze/25 rounded-[28px] p-6 sm:p-8 shadow-sm">
             <div class="grid sm:grid-cols-2 gap-4">
               <div>
                 <label class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1.5">Booking
                   Reference</label>
-                <input id="trkRef" type="text" placeholder="LM-DAR-2026-000128"
-                  class="w-full px-4 py-3 border border-bronze/50 bg-panel rounded-xl text-sm focus:outline-none focus:border-plum transition" />
+                <input id="trkRef" type="text" placeholder="LM-HOM-2026-000041"
+                  class="w-full px-4 py-3 border border-bronze/50 bg-panel rounded-xl text-sm uppercase focus:outline-none focus:border-plum transition" />
               </div>
               <div>
-                <label class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1.5">Contact
-                  Number</label>
-                <input id="trkPhone" type="tel" inputmode="numeric" placeholder="09XXXXXXXXX" maxlength="11"
-                  class="numbers-only w-full px-4 py-3 border border-bronze/50 bg-panel rounded-xl text-sm focus:outline-none focus:border-plum transition" />
+                <label class="block text-[11px] font-bold tracking-widest uppercase text-ink/50 mb-1.5">Email
+                  Address</label>
+                <input id="trkEmail" type="email" placeholder="you@example.com" autocomplete="email"
+                  class="w-full px-4 py-3 border border-bronze/50 bg-panel rounded-xl text-sm focus:outline-none focus:border-plum transition" />
               </div>
             </div>
             <button onclick="hsTrack()"
@@ -2419,6 +2337,32 @@
               Track Request
             </button>
             <div id="trkResult" class="hidden mt-7 pt-7 border-t border-bronze/25"></div>
+          </div>
+
+          <!-- How to reschedule + important rules -->
+          <div class="mt-8 grid md:grid-cols-2 gap-5">
+            <div class="bg-sand-100 border border-bronze/25 rounded-[24px] p-6">
+              <span class="text-[11px] font-bold tracking-widest uppercase text-copper">How to reschedule</span>
+              <ol class="mt-3 space-y-2.5 text-[13px] text-ink/75 leading-relaxed list-decimal list-inside">
+                <li>Enter your <b>booking reference</b> (e.g. LM-HOM-2026-000041) and the <b>email</b> you used, then tap <b>Track Request</b>.</li>
+                <li>Open <b>“Need a different date? Reschedule online”</b> below your request.</li>
+                <li>Pick a <b>new date and time</b> at least <b>3 days</b> away, then tap <b>Move my booking</b>.</li>
+                <li>You'll get an <b>email confirmation</b> of the new schedule. Your assigned team is notified too.</li>
+              </ol>
+              <p class="mt-3 text-[12px] text-ink/55">Have an account? You can also reschedule from <b>My Account → Home Service</b>.</p>
+            </div>
+            <div class="bg-copper/10 border border-copper/30 rounded-[24px] p-6">
+              <span class="text-[11px] font-bold tracking-widest uppercase text-copper-dark">Important reminders &amp; rules</span>
+              <ul class="mt-3 space-y-2.5 text-[13px] text-ink/75 leading-relaxed">
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>Reschedule online at least <b>3 days (72 hours)</b> before your event. Closer than that, please call <b>0918 536 8016</b>.</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>You can move a request online up to <b>2 times</b>. After that, contact the branch.</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>If stylists are already assigned, the <b>whole team must be free</b> on the new date — otherwise pick another date.</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>Your <b>quote and reservation fee carry over</b> to the new date. Reservation fees are <b>non-refundable</b> — reschedule instead of cancelling.</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>Your request is <b>confirmed only after the reservation fee is paid</b> (pay online via GCash, Maya or card from this page).</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>Requests already <b>in progress, completed or cancelled</b> can't be rescheduled online.</span></li>
+                <li class="flex gap-2"><span class="text-copper-dark font-bold">•</span><span>All updates — quote, payment link and schedule changes — are sent to your <b>email</b>. Check your spam folder if you don't see them.</span></li>
+              </ul>
+            </div>
           </div>
         </div>
       </section>

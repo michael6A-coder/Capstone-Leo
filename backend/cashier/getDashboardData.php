@@ -4,8 +4,8 @@
  * Cashier Hub Data API Endpoint
  *
  * Every Cashier account is locked to exactly one branch (users.branch_id,
- * stored in the session at login by backend/auth/portalLogin.php /
- * login.php -- see database/migrations/007_cashier_branch_lock.sql). This
+ * stored in the session at login by backend/auth/login.php -- see
+ * database/migrations/007_cashier_branch_lock.sql). This
  * endpoint enforces that lock server-side: a Cashier only ever receives
  * their own branch's bookings/staff/inventory/services/EOD snapshot, never
  * the other branches', regardless of what the old client-side branch
@@ -21,6 +21,7 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/Scheduling.php';
 
 sendCorsHeaders();
 header('Content-Type: application/json');
@@ -54,6 +55,10 @@ try {
     }
     $myBranchKey = $myBranch['branchKey'];
 
+    // Settle forgotten sign-outs so the staff list never shows someone on
+    // shift after closing time (see Scheduling::autoCloseBranchAttendance).
+    Scheduling::autoCloseBranchAttendance($pdo, (int) $myBranch['id']);
+
     // --- Bookings (this branch's appointments only; the frontend slices this
     // into the live terminal queue vs. the appointments pipeline tab) ---
     $stmt = $pdo->prepare("
@@ -64,7 +69,7 @@ try {
             c.phone_number AS clientPhone,
             GROUP_CONCAT(DISTINCT s.service_name ORDER BY s.id SEPARATOR ', ') AS serviceName,
             a.employee_id AS staffId,
-            CASE WHEN e.id IS NOT NULL THEN CONCAT(e.first_name, ' ', e.last_name) ELSE NULL END AS staffName,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT CONCAT(se.first_name, ' ', se.last_name) ORDER BY sx.id SEPARATOR ', ') FROM appointment_services sx JOIN employees se ON se.id = COALESCE(sx.employee_id, a.employee_id) WHERE sx.appointment_id = a.id), CONCAT(e.first_name, ' ', e.last_name)) AS staffName,
             DATE_FORMAT(a.appointment_datetime, '%Y-%m-%d') AS date,
             DATE_FORMAT(a.appointment_datetime, '%h:%i %p') AS time,
             a.appointment_datetime AS startDateTime,
@@ -141,7 +146,9 @@ try {
             EXISTS (
                 SELECT 1 FROM attendance att WHERE att.employee_id = e.id
                 AND DATE(att.clock_in_time) = CURDATE() AND att.clock_out_time IS NULL
-            ) AS onShift
+            ) AS onShift,
+            (SELECT DATE_FORMAT(MAX(att2.clock_in_time), '%h:%i %p') FROM attendance att2 WHERE att2.employee_id = e.id
+                AND DATE(att2.clock_in_time) = CURDATE() AND att2.clock_out_time IS NULL) AS clockInTime
         FROM employees e
         LEFT JOIN branches br ON br.id = e.branch_id
         WHERE e.is_active = 1 AND e.branch_id = ?
@@ -199,6 +206,7 @@ try {
             'branchId' => $row['branchId'],
             'role' => $row['role'],
             'onShift' => $onShift,
+            'clockInTime' => $row['clockInTime'],
             'availability' => $availability,
             'todaysWorkload' => $todaysWorkload,
             'nextAppointment' => $nextAppointment ? $nextAppointment['label'] : null,
@@ -215,7 +223,7 @@ try {
                i.quantity_on_hand AS stock, i.max_stock AS maxStock, i.sale_price AS price
         FROM inventory i
         LEFT JOIN branches br ON br.id = i.branch_id
-        WHERE i.branch_id = ?
+        WHERE i.branch_id = ? AND i.is_active = 1
         ORDER BY i.id
     ");
     $stmt->execute([$myBranch['id']]);

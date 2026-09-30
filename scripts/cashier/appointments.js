@@ -8,6 +8,8 @@ const state = {
   branch: null,
   pendingAdmitRef: null,
   pendingReassignRef: null,
+  pendingRescheduleRef: null,
+  pendingRescheduleTime: '',
   activeTab: 'Pending'
 };
 
@@ -58,7 +60,9 @@ function paymentStatusBadgeClass(status) {
   switch (status) {
     case 'Fully Paid':
     case 'Down Payment Verified': return 'bg-emerald-100 text-emerald-700';
-    case 'Awaiting Verification': return 'bg-amber-100 text-amber-800';
+    case 'Awaiting Verification':
+    case 'Refund Due':
+    case 'Refund Processing': return 'bg-amber-100 text-amber-800';
     case 'Rejected':
     case 'Refunded':
     case 'Forfeited': return 'bg-rose-100 text-rose-700';
@@ -73,7 +77,8 @@ function renderAppointments() {
 
   const search = (document.getElementById('apptSearch').value || '').toLowerCase().trim();
   const filtered = bookings.filter(b => {
-    const matchesTab = state.activeTab === 'All' || b.status === state.activeTab;
+    const matchesTab = state.activeTab === 'All'
+      || b.status === state.activeTab;
     const matchesSearch = !search
       || b.clientName.toLowerCase().includes(search)
       || (b.clientPhone || '').includes(search)
@@ -117,6 +122,14 @@ function actionsFor(b) {
   const ref = escapeHtml(b.id);
   const details = `<button data-action="details" data-ref="${ref}" class="text-slate-500 hover:text-slate-800 hover:underline">View</button>`;
 
+  // Deposits are non-refundable (backend/config/CancellationPolicy.php). A
+  // cancelled booking whose deposit was kept can be rescheduled instead,
+  // which reinstates it with that deposit (backend/config/Reschedule.php).
+  if (hasKeptDeposit(b)) {
+    return `${details}<button data-action="reschedule" data-ref="${ref}" class="text-amber-700 font-bold hover:underline">Reschedule</button>
+      <span class="block mt-1 text-[10px] leading-snug text-rose-700 font-semibold whitespace-normal max-w-[14rem]">No refund — ${CashierApp.formatCurrency(b.depositAmount || 0)} deposit is non-refundable. The customer can reschedule to use it.</span>`;
+  }
+
   if (b.status === 'Pending') {
     const verify = (b.depositAmount || b.depositReference)
       ? `<button data-action="verify" data-ref="${ref}" class="text-sky-700 font-bold hover:underline">Verify Payment</button>`
@@ -129,16 +142,25 @@ function actionsFor(b) {
       <button data-action="cancel" data-ref="${ref}" class="text-rose-700 font-bold hover:underline">Cancel</button>
     `;
   }
+  const reschedule = `<button data-action="reschedule" data-ref="${ref}" class="text-amber-700 font-bold hover:underline">Reschedule</button>`;
+  // Same rule as payment.html's "Ready for Checkout" list: a Confirmed
+  // booking can be checked out from its appointment day onward.
+  const checkout = `<a href="payment.html?ref=${encodeURIComponent(b.id)}" class="text-emerald-700 font-bold hover:underline">Checkout</a>`;
+  const isDue = (b.date || '') <= localDateYmd(new Date());
   if (b.status === 'Confirmed') {
-    return `${details}<button data-action="reassign" data-ref="${ref}" class="text-amber-700 font-bold hover:underline">${b.staffName ? 'Reassign' : 'Assign'} Staff</button>`;
+    return `${details}${isDue ? checkout : ''}<button data-action="reassign" data-ref="${ref}" class="text-amber-700 font-bold hover:underline">${b.staffName ? 'Reassign' : 'Assign'} Staff</button>${reschedule}`;
+  }
+  if (b.status === 'Reschedule Requested') {
+    return `${details}${reschedule}<button data-action="cancel" data-ref="${ref}" class="text-rose-700 font-bold hover:underline">Cancel</button>`;
   }
   if (b.status === 'In Progress') {
-    return details;
+    return details + checkout;
   }
   if (b.status === 'Completed') {
+    // Unpaid completed visits are checked out from the "Ready for Checkout"
+    // list on payment.html, so only the receipt link belongs here.
     return `
       ${details}
-      <a href="payment.html?ref=${encodeURIComponent(b.id)}" class="text-amber-700 font-bold hover:underline">Checkout</a>
       ${b.paymentStatus === 'Fully Paid' || b.paymentStatus === 'Down Payment Verified'
         ? `<a href="receipt.html?ref=${encodeURIComponent(b.id)}" class="text-emerald-700 font-bold hover:underline">Receipt</a>` : ''}
     `;
@@ -213,7 +235,7 @@ async function admitAppointmentToQueue(ref, depositAmount, depositMethod) {
 function openDepositModal(ref) {
   state.pendingAdmitRef = ref;
   const booking = state.data.bookings.find(b => b.id === ref);
-  const allowedDepositMethods = ['Cash', 'GCash', 'Maya'];
+  const allowedDepositMethods = ['Cash', 'GCash', 'Maya', 'PayMongo'];
 
   document.getElementById('depositAmountInput').value = booking ? (booking.depositAmount || booking.price) : '';
   document.getElementById('depositMethodInput').value = booking && allowedDepositMethods.includes(booking.paymentMethod) ? booking.paymentMethod : '';
@@ -274,15 +296,133 @@ async function confirmReassign() {
   }
 }
 
-async function rescheduleBooking(ref) {
-  if (!window.confirm('Mark this booking as needing a schedule change? The customer will be notified.')) return;
-  const result = await CashierApp.post('updateStatus.php', { id: ref, status: 'Reschedule Requested' });
+/* RESCHEDULE -- pick a new date + an open slot and move the booking
+   (backend/cashier/rescheduleAppointment.php), or fall back to flagging it
+   "Reschedule Requested" so the customer is asked to sort out a new time. */
+function localDateYmd(d) {
+  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+}
+
+function openRescheduleModal(ref) {
+  const b = state.data.bookings.find(x => x.id === ref);
+  if (!b) return;
+  state.pendingRescheduleRef = ref;
+  state.pendingRescheduleTime = '';
+  const info = [
+    ['Reference', `<span class="font-mono">${cellOrDash(b.id)}</span>`],
+    ['Status', `<span class="text-[10px] font-bold px-2 py-0.5 rounded ${statusBadgeClass(b.status)}">${escapeHtml(b.status)}</span>`],
+    ['Client', `<span class="capitalize">${cellOrDash(b.clientName)}</span>`],
+    ['Contact', cellOrDash(b.clientPhone)],
+    ['Service(s)', cellOrDash(b.serviceName), true],
+    ['Duration', b.durationMinutes ? b.durationMinutes + ' min' : '—'],
+    ['Total', CashierApp.formatCurrency(b.price)],
+    ['Payment', `<span class="text-[10px] font-bold px-2 py-0.5 rounded ${paymentStatusBadgeClass(b.paymentStatus)}">${cellOrDash(b.paymentStatus)}</span>`],
+    ['Deposit', b.depositAmount ? CashierApp.formatCurrency(b.depositAmount) + (b.depositVerified ? ' (verified)' : ' (unverified)') : '—'],
+  ];
+  document.getElementById('rescheduleInfo').innerHTML = info.map(([label, value, wide]) => `
+    <div class="${wide ? 'col-span-2' : ''}"><span class="block text-[10px] text-gray-400 font-bold uppercase">${label}</span><span class="text-slate-800">${value}</span></div>
+  `).join('');
+  document.getElementById('rescheduleCurrent').textContent = b.date + ' · ' + b.time + ' – ' + (b.endTime || '') + (b.staffName ? ' with ' + titleCase(b.staffName) : '');
+  const verified = ['Down Payment Verified', 'Fully Paid'].includes(b.paymentStatus);
+  document.getElementById('rescheduleStatusNote').textContent = hasKeptDeposit(b)
+    ? `Reinstates this cancelled booking — its ${CashierApp.formatCurrency(b.depositAmount)} non-refundable deposit is applied to the new time (${b.depositVerified ? 'status becomes Confirmed' : 'status becomes Pending until the deposit is verified'}).`
+    : b.status === 'Reschedule Requested'
+      ? `Status changes to ${verified ? 'Confirmed (payment already verified)' : 'Pending (payment still needs verifying)'}.`
+      : `Status stays ${b.status}.`;
+  document.getElementById('rescheduleReason').value = '';
+  document.getElementById('rescheduleSlotNote').textContent = '';
+  const dateInput = document.getElementById('rescheduleDate');
+  dateInput.min = localDateYmd(new Date());
+  dateInput.value = b.date && b.date >= dateInput.min ? b.date : dateInput.min;
+  // Only a booking that hasn't already been flagged can be flagged.
+  document.getElementById('btnAskCustomerReschedule').classList.toggle('hidden', b.status === 'Reschedule Requested' || b.status === 'Cancelled');
+  CashierApp.showModal('rescheduleModal');
+  loadRescheduleSlots();
+}
+
+let rescheduleSlotsRequest = 0;
+async function loadRescheduleSlots() {
+  const box = document.getElementById('rescheduleSlots');
+  const date = document.getElementById('rescheduleDate').value;
+  state.pendingRescheduleTime = '';
+  document.getElementById('btnConfirmReschedule').disabled = true;
+  if (!date) {
+    box.innerHTML = '<p class="col-span-4 text-gray-400 italic">Pick a date to see open times.</p>';
+    return;
+  }
+  box.innerHTML = '<p class="col-span-4 text-gray-400 italic">Loading open times…</p>';
+  const requestId = ++rescheduleSlotsRequest;
+  const result = await CashierApp.get('rescheduleAppointment.php', { id: state.pendingRescheduleRef, date });
+  if (requestId !== rescheduleSlotsRequest) return; // a newer date pick superseded this one
+  if (!result.success) {
+    box.innerHTML = `<p class="col-span-4 text-rose-600">${escapeHtml(result.message || 'Could not load times.')}</p>`;
+    return;
+  }
+  const booking = state.data.bookings.find(x => x.id === state.pendingRescheduleRef);
+  const open = result.slots.filter(s => s.available);
+  document.getElementById('rescheduleSlotNote').textContent = open.length
+    ? `${open.length} open time${open.length === 1 ? '' : 's'} · each start fits the full ${result.durationMinutes}-min service before closing, with a qualified stylist free.`
+    : '';
+  if (!open.length) {
+    box.innerHTML = '<p class="col-span-4 text-gray-400 italic">No open times on this date. Try another day.</p>';
+    return;
+  }
+  box.innerHTML = result.slots.map(s => {
+    const isCurrent = booking && booking.date === date && booking.time === s.time;
+    return `<button type="button" data-time="${escapeHtml(s.time)}" ${s.available && !isCurrent ? '' : 'disabled'}
+      class="reschedule-slot border rounded-lg py-1.5 font-semibold transition ${s.available && !isCurrent
+        ? 'border-gray-300 hover:border-amber-500 text-slate-700'
+        : 'border-gray-100 text-gray-300 line-through cursor-not-allowed'}">${escapeHtml(s.time)}</button>`;
+  }).join('');
+}
+
+function pickRescheduleSlot(btn) {
+  document.querySelectorAll('#rescheduleSlots .reschedule-slot').forEach(b => b.classList.remove('bg-amber-500', 'border-amber-500', 'text-slate-950'));
+  btn.classList.add('bg-amber-500', 'border-amber-500', 'text-slate-950');
+  state.pendingRescheduleTime = btn.dataset.time;
+  document.getElementById('btnConfirmReschedule').disabled = false;
+}
+
+async function confirmReschedule() {
+  const date = document.getElementById('rescheduleDate').value;
+  const time = state.pendingRescheduleTime;
+  if (!date || !time) return;
+  const btn = document.getElementById('btnConfirmReschedule');
+  btn.disabled = true;
+  const reason = document.getElementById('rescheduleReason').value.trim();
+  const result = await CashierApp.post('rescheduleAppointment.php', { id: state.pendingRescheduleRef, date, time, reason });
+  CashierApp.toast(result.message || (result.success ? 'Booking rescheduled.' : 'Failed to reschedule.'), result.success ? 'success' : 'error');
+  if (result.success) {
+    CashierApp.hideModal('rescheduleModal');
+    state.pendingRescheduleRef = null;
+    await refreshData();
+  } else {
+    await loadRescheduleSlots(); // the slot may have just been taken
+  }
+}
+
+async function askCustomerToReschedule() {
+  if (!window.confirm('Mark this booking as needing a schedule change? The customer will be notified to arrange a new time.')) return;
+  const result = await CashierApp.post('updateStatus.php', { id: state.pendingRescheduleRef, status: 'Reschedule Requested' });
   CashierApp.toast(result.message || (result.success ? 'Reschedule requested.' : 'Failed to update booking.'), result.success ? 'success' : 'error');
-  if (result.success) await refreshData();
+  if (result.success) {
+    CashierApp.hideModal('rescheduleModal');
+    await refreshData();
+  }
+}
+
+/* Cancelled, but the salon kept the (non-refundable) deposit -- the booking
+   can be rescheduled to use it. Mirrors Reschedule::isReinstatable(). */
+function hasKeptDeposit(b) {
+  return b.status === 'Cancelled' && ['Forfeited', 'Refund Due'].includes(b.paymentStatus) && Number(b.depositAmount) > 0;
 }
 
 async function cancelBooking(ref) {
-  if (!window.confirm('Cancel this booking? This cannot be undone.')) return;
+  const b = state.data.bookings.find(x => x.id === ref);
+  const depositNote = b && b.depositAmount && ['Down Payment Verified', 'Fully Paid'].includes(b.paymentStatus)
+    ? `\n\nThe ${CashierApp.formatCurrency(b.depositAmount)} deposit is NON-REFUNDABLE. Consider "Reschedule" instead — the customer can also reschedule later to use it.`
+    : '';
+  if (!window.confirm('Cancel this booking?' + depositNote)) return;
   const result = await CashierApp.post('updateStatus.php', { id: ref, status: 'Cancelled' });
   CashierApp.toast(result.message || (result.success ? 'Booking cancelled.' : 'Failed to cancel booking.'), result.success ? 'success' : 'error');
   if (result.success) await refreshData();
@@ -304,7 +444,7 @@ function wireStaticEvents() {
       case 'verify': showDetails(ref); break;
       case 'confirm': openDepositModal(ref); break;
       case 'reassign': openReassignModal(ref); break;
-      case 'reschedule': rescheduleBooking(ref); break;
+      case 'reschedule': openRescheduleModal(ref); break;
       case 'cancel': cancelBooking(ref); break;
     }
   });
@@ -314,6 +454,15 @@ function wireStaticEvents() {
   document.getElementById('btnCloseDetailsModal').addEventListener('click', () => CashierApp.hideModal('detailsModal'));
   document.getElementById('btnCloseReassignModal').addEventListener('click', () => CashierApp.hideModal('reassignModal'));
   document.getElementById('btnConfirmReassign').addEventListener('click', confirmReassign);
+
+  document.getElementById('btnCloseRescheduleModal').addEventListener('click', () => CashierApp.hideModal('rescheduleModal'));
+  document.getElementById('rescheduleDate').addEventListener('change', loadRescheduleSlots);
+  document.getElementById('rescheduleSlots').addEventListener('click', (e) => {
+    const btn = e.target.closest('.reschedule-slot');
+    if (btn && !btn.disabled) pickRescheduleSlot(btn);
+  });
+  document.getElementById('btnConfirmReschedule').addEventListener('click', confirmReschedule);
+  document.getElementById('btnAskCustomerReschedule').addEventListener('click', askCustomerToReschedule);
 }
 
 document.addEventListener('DOMContentLoaded', init);

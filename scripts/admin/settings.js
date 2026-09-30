@@ -6,16 +6,6 @@ function adminDefaultCashierForm() {
   };
 }
 
-function adminDefaultSupplierForm() {
-  return {
-    companyName: '',
-    contactPerson: '',
-    phone: '',
-    address: '',
-    email: ''
-  };
-}
-
 function adminSettingsApp() {
   return {
     profileSaved: false,
@@ -27,15 +17,6 @@ function adminSettingsApp() {
     editingCashierId: null,
     cashierForm: adminDefaultCashierForm(),
     savingCashier: false,
-
-    // Supplier account management -- external vendors with their own
-    // Supplier Portal login (see pages/supplier/*.html), same
-    // account-creation pattern as Cashier (a users row + a dedicated
-    // profile row, here `suppliers` instead of branch-only).
-    openSupplierModal: false,
-    editingSupplierId: null,
-    supplierForm: adminDefaultSupplierForm(),
-    savingSupplier: false,
 
     init() {
       adminHighlightNav();
@@ -67,9 +48,6 @@ function adminSettingsApp() {
         alert(result.message || 'Failed to save cashier account.');
         return;
       }
-      if (result.tempPassword) {
-        alert('Cashier account created. Temporary password: ' + result.tempPassword + '\nShare this with them securely — it will not be shown again.');
-      }
       await store.refresh();
       this.openCashierModal = false;
     },
@@ -80,58 +58,6 @@ function adminSettingsApp() {
       const result = await store.post('removeCashier.php', { id: cashierId });
       if (!result.success) {
         alert(result.message || 'Failed to remove cashier account.');
-        return;
-      }
-      await store.refresh();
-    },
-
-    openAddSupplierModal() {
-      this.editingSupplierId = null;
-      this.supplierForm = adminDefaultSupplierForm();
-      this.openSupplierModal = true;
-    },
-
-    openEditSupplier(supplier) {
-      this.editingSupplierId = supplier.id;
-      this.supplierForm = {
-        companyName: supplier.companyName,
-        contactPerson: supplier.contactPerson || '',
-        phone: supplier.phone || '',
-        address: supplier.address || '',
-        email: ''
-      };
-      this.openSupplierModal = true;
-    },
-
-    async saveSupplier() {
-      const store = Alpine.store('admin');
-      this.savingSupplier = true;
-      const result = await store.post('saveSupplierAccount.php', {
-        id: this.editingSupplierId || '',
-        companyName: this.supplierForm.companyName,
-        contactPerson: this.supplierForm.contactPerson,
-        phone: this.supplierForm.phone,
-        address: this.supplierForm.address,
-        email: this.supplierForm.email
-      });
-      this.savingSupplier = false;
-      if (!result.success) {
-        alert(result.message || 'Failed to save supplier account.');
-        return;
-      }
-      if (result.tempPassword) {
-        alert('Supplier account created. Temporary password: ' + result.tempPassword + '\nShare this with them securely — it will not be shown again.');
-      }
-      await store.refresh();
-      this.openSupplierModal = false;
-    },
-
-    async removeSupplierAccount(supplierId) {
-      if (!confirm('Remove this supplier account? They will no longer be able to log in.')) return;
-      const store = Alpine.store('admin');
-      const result = await store.post('removeSupplierAccount.php', { id: supplierId });
-      if (!result.success) {
-        alert(result.message || 'Failed to remove supplier account.');
         return;
       }
       await store.refresh();

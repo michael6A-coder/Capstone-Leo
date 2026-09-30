@@ -10,7 +10,7 @@ function customerBookingMixin() {
       this.reservationQuote = null;
       this.reservationQuoteLoading = true;
       this.depositLocked = false;
-      const params = new URLSearchParams({ branch: this.bookingForm.branch, useLoyaltyPoints: this.bookingForm.useLoyaltyPoints ? '1' : '0' });
+      const params = new URLSearchParams({ branch: this.bookingForm.branch, useLoyaltyPoints: this.bookingForm.useLoyaltyPoints ? '1' : '0', paymentPlan: this.bookingForm.paymentPlan || 'deposit' });
       this.selectedServicesForBooking.forEach(s => params.append('serviceIds[]', s.id));
       try {
         const response = await fetch('../../backend/public/getReservationQuote.php?' + params);
@@ -200,9 +200,6 @@ function customerBookingMixin() {
     proceedFromPayment() {
       if (!this.reservationQuote || this.reservationQuoteLoading) return this.pushToast('error', 'Please review your reservation payment first.');
       if (!this.bookingForm.paymentMethod) return this.pushToast('error', 'Please choose a payment method for your deposit.');
-      if ((this.bookingForm.paymentMethod === 'GCash' || this.bookingForm.paymentMethod === 'Maya') && !this.bookingForm.depositReference.trim()) {
-        return this.pushToast('error', 'Please enter your ' + this.bookingForm.paymentMethod + ' reference number.');
-      }
       this.depositLocked = true;
       this.bookingStep = 'notifications';
     },
@@ -329,6 +326,7 @@ function customerBookingMixin() {
       this.bookingForm.staffId = '';
       this.bookingForm.paymentMethod = '';
       this.bookingForm.depositReference = '';
+      this.bookingForm.paymentPlan = 'deposit';
       this.depositLocked = false;
       this.bookingForm.useLoyaltyPoints = false;
       this.bookingForm.agreedToTerms = false;
@@ -365,6 +363,37 @@ function customerBookingMixin() {
         });
         return !staffIsBusy;
       });
+    },
+
+    // Stylists who qualify for the selected services but are booked at the
+    // chosen time -- offered on the stylist step for the waitlist.
+    getBusyStaffForBranch() {
+      if (!this.bookingForm.date || !this.bookingForm.time) return [];
+      const selectedIds = this.selectedServicesForBooking.map(s => String(s.id));
+      const availableIds = this.getAvailableStaffForBranch().map(s => String(s.id));
+      return this.staffList.filter(staff =>
+        staff.branch === this.selectedBranchForServices &&
+        (selectedIds.length === 0 || selectedIds.every(id => (staff.serviceIds || []).includes(id))) &&
+        !availableIds.includes(String(staff.id))
+      );
+    },
+
+    waitlistStaffId: '',
+    isJoiningWaitlist: false,
+    joinStylistWaitlist() {
+      if (!this.waitlistStaffId) return this.pushToast('error', 'Choose the stylist you want to wait for.');
+      this.isJoiningWaitlist = true;
+      const formData = new FormData();
+      formData.append('branch', this.selectedBranchForServices);
+      formData.append('employeeId', this.waitlistStaffId);
+      formData.append('date', this.bookingForm.date);
+      formData.append('time', this.bookingForm.time);
+      // Name/email come from the logged-in account on the backend.
+      fetch('../../backend/public/joinWaitlist.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(body => this.pushToast(body.success ? 'success' : 'error', body.message || 'Could not join the waitlist.'))
+        .catch(() => this.pushToast('error', 'A network error occurred. Please try again.'))
+        .finally(() => { this.isJoiningWaitlist = false; });
     },
 
     submitBooking() {
@@ -404,6 +433,7 @@ function customerBookingMixin() {
       formData.append('quoteToken', this.reservationQuote.quoteToken);
       formData.append('depositReference', this.bookingForm.depositReference);
       formData.append('useLoyaltyPoints', this.bookingForm.useLoyaltyPoints ? '1' : '0');
+      formData.append('paymentPlan', this.bookingForm.paymentPlan || 'deposit');
       formData.append('agreedToTerms', this.bookingForm.agreedToTerms ? '1' : '0');
 
       fetch('../../backend/customer/submitBooking.php', { method: 'POST', body: formData })
@@ -426,6 +456,14 @@ function customerBookingMixin() {
               this.bookingStep = 'schedule';
               this.bookingForm.time = '';
             }
+            return;
+          }
+
+          // Online payment: hand off to PayMongo's hosted checkout, which
+          // returns to pages/payment/result.html when done.
+          if (body.checkoutUrl) {
+            this.isSubmittingBooking = true;
+            window.location.href = body.checkoutUrl;
             return;
           }
 

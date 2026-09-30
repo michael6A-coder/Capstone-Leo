@@ -69,7 +69,9 @@ function renderStats() {
   document.getElementById('statPaymentsToVerify').textContent = bookings.filter(b => b.depositAmount && !b.depositVerified).length;
   document.getElementById('statWalkInsToday').textContent = todayBookings.filter(b => b.depositMethod === 'Walk-in').length;
   document.getElementById('statInProgress').textContent = bookings.filter(b => b.status === 'In Progress').length;
-  document.getElementById('statReadyForCheckout').textContent = bookings.filter(b => ['Confirmed', 'In Progress'].includes(b.status)).length;
+  // Same set the Checkout buttons in today's queue cover -- a confirmed booking
+  // for a later date isn't ready to check out yet.
+  document.getElementById('statReadyForCheckout').textContent = todayBookings.filter(b => ['Confirmed', 'In Progress'].includes(b.status)).length;
 }
 
 /* Only actions valid for the booking's current status -- Confirm Booking and

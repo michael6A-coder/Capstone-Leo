@@ -28,9 +28,12 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/CustomerNotifier.php';
+require_once '../config/PayMongo.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -57,7 +60,7 @@ if ($referenceCode === '' || !in_array($action, ['quote', 'recordPayment', 'requ
 try {
     $pdo = Database::getInstance();
 
-    $stmt = $pdo->prepare('SELECT id, customer_id, status FROM home_service_requests WHERE reference_code = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT h.id, h.customer_id, h.status, h.deposit_paid, c.user_id FROM home_service_requests h JOIN customers c ON c.id = h.customer_id WHERE h.reference_code = ? LIMIT 1');
     $stmt->execute([$referenceCode]);
     $homeService = $stmt->fetch();
     if (!$homeService) {
@@ -80,27 +83,65 @@ try {
             $reservationFee = 0;
         }
 
+        if ((int) $homeService['deposit_paid'] === 1) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'The reservation fee for this request is already paid, so the quote can no longer be changed.']);
+            exit();
+        }
+        if ($reservationFee > $quotePrice) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'The reservation fee cannot be more than the quote.']);
+            exit();
+        }
+
         $requiresPayment = $reservationFee > 0;
         $status = $requiresPayment ? 'Payment Required' : 'Quote Ready';
 
         $pdo->prepare('
             UPDATE home_service_requests
-            SET quote_price = ?, deposit_amount = ?, deposit_paid = 0, deposit_recorded_by = NULL, deposit_recorded_at = NULL, status = ?, payment_status = ?
+            SET quote_price = ?, deposit_amount = ?, deposit_paid = 0, deposit_recorded_by = NULL, deposit_recorded_at = NULL, status = ?, payment_status = ?,
+                paymongo_checkout_id = NULL, paymongo_checkout_url = NULL, online_payment_token = NULL
             WHERE id = ?
         ')->execute([
             $quotePrice,
             $requiresPayment ? $reservationFee : null,
             $status,
-            $requiresPayment ? 'Payment Required' : 'Payment Required',
+            'Payment Required',
             $homeServiceId,
         ]);
 
+        // Pay the reservation fee (down payment) online: a PayMongo checkout
+        // link goes to the customer with the quote. If PayMongo is down or
+        // not set up, the quote still saves and the fee can be paid in person
+        // (recorded with "Record Payment").
+        $payUrl = null;
+        $payNote = '';
+        if ($requiresPayment && PayMongo::isConfigured()) {
+            if ($reservationFee < PayMongo::MIN_AMOUNT) {
+                $payNote = ' The fee is below PayMongo\'s ₱' . number_format(PayMongo::MIN_AMOUNT, 2) . ' minimum, so it must be paid in person.';
+            } else {
+                try {
+                    $payUrl = PayMongo::startHomeServiceCheckout($pdo, (int) $homeServiceId, $referenceCode, $reservationFee,
+                        $homeService['user_id'] !== null ? 'customer' : 'guest');
+                } catch (RuntimeException $e) {
+                    error_log('setHomeServiceQuote PayMongo error: ' . $e->getMessage());
+                    PaymentLog::record($pdo, 'api_error', null, $referenceCode, null, $reservationFee, 'checkout_failed', $e->getMessage());
+                    $payNote = ' The PayMongo payment link could not be created (' . preg_replace('/^PayMongo error \d+: /', '', $e->getMessage()) . '), so the fee must be paid in person for now.';
+                }
+            }
+        }
+
         $message = $requiresPayment
-            ? "Your home service request {$referenceCode} has a final quote of ₱" . number_format($quotePrice, 2) . " and requires a ₱" . number_format($reservationFee, 2) . ' reservation payment.'
+            ? "Your home service request {$referenceCode} has a final quote of ₱" . number_format($quotePrice, 2) . " and requires a ₱" . number_format($reservationFee, 2) . ' reservation fee (down payment) to confirm it.'
+                . ($payUrl ? " Pay it online (GCash, Maya or card): {$payUrl} — or use Track My Request." : ' Please contact the branch to arrange payment.')
             : "Your home service request {$referenceCode} has a final quote of ₱" . number_format($quotePrice, 2) . ' with no reservation payment required.';
         CustomerNotifier::notify($pdo, $customerId, 'QUOTE_READY', $message);
 
-        echo json_encode(['success' => true, 'message' => 'Quote saved.']);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Quote saved.' . ($payUrl ? ' A PayMongo payment link was sent to the customer; the request confirms itself once they pay.' : '') . $payNote,
+            'payUrl' => $payUrl,
+        ]);
         exit();
     }
 

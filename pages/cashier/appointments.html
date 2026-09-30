@@ -92,7 +92,7 @@
 
         <div>
             <div class="px-3 pb-2">
-                <a href="../login/login.html" id="btnSignOut" class="w-full text-left flex items-center space-x-3 px-4 py-2.5 rounded-lg text-xs transition-all text-rose-400 hover:bg-rose-900/40 hover:text-rose-300">
+                <a href="../../backend/auth/logout.php" id="btnSignOut" class="w-full text-left flex items-center space-x-3 px-4 py-2.5 rounded-lg text-xs transition-all text-rose-400 hover:bg-rose-900/40 hover:text-rose-300">
                     <i class="fa-solid fa-right-from-bracket w-5 text-center"></i>
                     <span>Sign Out</span>
                 </a>
@@ -191,6 +191,7 @@
                         <option value="Cash">Cash</option>
                         <option value="GCash">GCash</option>
                         <option value="Maya">Maya</option>
+                        <option value="PayMongo">PayMongo (online)</option>
                     </select>
                 </div>
                 <button id="btnConfirmDeposit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition duration-150">Confirm &amp; Admit</button>
@@ -220,6 +221,55 @@
                     <select id="reassignStaffSelect" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"></select>
                 </div>
                 <button id="btnConfirmReassign" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-xl transition duration-150">Assign Staff</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rescheduleModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl border border-gray-100 transform scale-95 transition-transform duration-300">
+            <div class="bg-slate-950 p-4 text-white flex justify-between items-center">
+                <h4 class="font-bold text-sm tracking-wide"><i class="fa-solid fa-calendar-days text-amber-400 mr-2"></i>Reschedule Booking</h4>
+                <button id="btnCloseRescheduleModal" class="text-gray-400 hover:text-white transition-all text-lg" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs max-h-[80vh] overflow-y-auto">
+                <div id="rescheduleInfo" class="rounded-xl bg-gray-50 border border-gray-200 p-3 grid grid-cols-2 gap-x-3 gap-y-2"></div>
+                <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 flex items-start gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-amber-600 mt-0.5"></i>
+                    <div>
+                        <span class="block text-[10px] text-amber-700 font-bold uppercase">Current schedule</span>
+                        <span class="font-semibold text-slate-800" id="rescheduleCurrent"></span>
+                    </div>
+                </div>
+                <div>
+                    <label for="rescheduleDate" class="block text-[10px] text-gray-500 font-bold uppercase mb-1">New date</label>
+                    <input id="rescheduleDate" type="date" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="block text-[10px] text-gray-500 font-bold uppercase">New time</span>
+                        <span class="flex items-center gap-2.5 text-[10px] text-gray-500">
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-gray-300 bg-white"></span>Open</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-amber-500"></span>Selected</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-gray-100"></span><span class="line-through">Full</span> / current</span>
+                        </span>
+                    </div>
+                    <div id="rescheduleSlots" class="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto">
+                        <p class="col-span-4 text-gray-400 italic">Pick a date to see open times.</p>
+                    </div>
+                    <p class="text-[10px] text-gray-400 mt-1" id="rescheduleSlotNote"></p>
+                </div>
+                <div>
+                    <label for="rescheduleReason" class="block text-[10px] text-gray-500 font-bold uppercase mb-1">Reason for the customer <span class="normal-case font-normal">(optional)</span></label>
+                    <input id="rescheduleReason" type="text" maxlength="200" placeholder="e.g. Stylist unavailable that morning" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                </div>
+                <ul class="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-1 text-[11px] text-slate-600 list-disc list-inside">
+                    <li>Same reference, services, and deposit — nothing is re-charged.</li>
+                    <li>Keeps the current stylist if free; otherwise another qualified stylist is assigned.</li>
+                    <li id="rescheduleStatusNote"></li>
+                    <li>The customer is notified of the new schedule (and the reason, if given).</li>
+                </ul>
+                <button id="btnConfirmReschedule" disabled class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold text-xs py-2.5 rounded-xl transition duration-150">Move Booking</button>
+                <button id="btnAskCustomerReschedule" class="w-full bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs py-2.5 rounded-xl transition duration-150">Ask Customer to Reschedule Instead</button>
             </div>
         </div>
     </div>

@@ -35,8 +35,14 @@ if (session_status() === PHP_SESSION_NONE) {
     // This helps prevent session fixation attacks.
     ini_set('session.use_strict_mode', '1');
 
+    // "Remember me" on the login form (pages/login/login.html) extends the
+    // session cookie to 30 days instead of expiring it when the browser
+    // closes. Safe to read $_POST here for every other page too -- it's
+    // just absent/falsy outside of that one login request.
+    $rememberMe = !empty($_POST['remember']);
+
     session_set_cookie_params([
-        'lifetime' => 0, // Session cookie lasts until the browser is closed.
+        'lifetime' => $rememberMe ? 60 * 60 * 24 * 30 : 0, // 30 days if "remember me", else until the browser closes.
         'path'     => '/', // Available for the entire domain.
         'domain'   => '',  // Set to your domain in production.
         'secure'   => false, // Should be `true` in production (HTTPS only).
@@ -112,7 +118,6 @@ function getRoleDashboardUrl(string $role, string $from = 'login'): string
         'Admin'    => 'pages/admin/dashboard.html',
         'Cashier'  => 'pages/cashier/dashboard.html',
         'Staff'    => 'pages/staff/dashboard.html',
-        'Supplier' => 'pages/supplier/dashboard.html',
     ];
 
     $path = $dashboards[$role] ?? $dashboards['Customer'];

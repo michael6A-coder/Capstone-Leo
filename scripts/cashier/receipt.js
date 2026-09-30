@@ -49,6 +49,11 @@ function renderReceipt(receipt) {
   `).join('') || '<p class="text-gray-400 italic py-3 text-center">No itemized lines.</p>';
 
   document.getElementById('receiptSubtotal').textContent = CashierApp.formatCurrency(receipt.subtotal);
+  // The reservation deposit was paid before the visit, so it's deducted here --
+  // otherwise Subtotal + Tip wouldn't add up to Total Paid.
+  const reservation = Number(receipt.reservationReceived) || 0;
+  document.getElementById('receiptReservationRow').classList.toggle('hidden', reservation <= 0);
+  document.getElementById('receiptReservation').textContent = '− ' + CashierApp.formatCurrency(reservation);
   document.getElementById('receiptTip').textContent = CashierApp.formatCurrency(receipt.tip);
   document.getElementById('receiptTotal').textContent = CashierApp.formatCurrency(receipt.total);
   document.getElementById('receiptMethod').textContent = receipt.paymentMethod;

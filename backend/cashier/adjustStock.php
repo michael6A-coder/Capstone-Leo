@@ -11,9 +11,11 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/EodLock.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Cashier', 'Admin'], true)) {
@@ -42,7 +44,7 @@ if ($itemId <= 0 || !in_array($adjType, ['add', 'sub'], true) || $quantity <= 0 
 try {
     $pdo = Database::getInstance();
 
-    $stmt = $pdo->prepare('SELECT product_name, branch_id, quantity_on_hand, max_stock, reorder_level FROM inventory WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT product_name, branch_id, quantity_on_hand, max_stock, reorder_level FROM inventory WHERE id = ? AND is_active = 1'); // archived items can't be adjusted here
     $stmt->execute([$itemId]);
     $item = $stmt->fetch();
     if (!$item) {

@@ -67,18 +67,69 @@ try {
 
     $durationMinutes = Scheduling::totalDurationMinutes($pdo, $serviceIds);
 
+    // 'busy' lists qualified stylists who are booked at this time, so the
+    // form can offer to waitlist them (backend/public/joinWaitlist.php).
     $staff = [];
+    $busy = [];
     foreach ($candidates as $candidate) {
+        $entry = [
+            'id' => (string) $candidate['id'],
+            'name' => trim($candidate['first_name'] . ' ' . $candidate['last_name']),
+            'role' => $candidate['position'] ?: '',
+        ];
         if (!Scheduling::staffHasConflict($pdo, (int) $candidate['id'], $appointmentDateTime, $durationMinutes)) {
-            $staff[] = [
-                'id' => (string) $candidate['id'],
-                'name' => trim($candidate['first_name'] . ' ' . $candidate['last_name']),
-                'role' => $candidate['position'] ?: '',
-            ];
+            $staff[] = $entry;
+        } else {
+            $busy[] = $entry;
         }
     }
 
-    echo json_encode(['success' => true, 'staff' => $staff]);
+    // Per-service view (one stylist per service): the services run
+    // back-to-back in the order given, so each gets its own time window and
+    // its own list of qualified stylists -- every one of them, flagged
+    // available or "busy until" so the guest sees who is still with another
+    // client instead of them silently disappearing.
+    $stmt = $pdo->prepare("SELECT id, service_name, duration_minutes FROM services WHERE branch_id = ? AND id IN ($servicePlaceholders) AND is_active = 1");
+    $stmt->execute([$branchId, ...$serviceIds]);
+    $serviceRows = [];
+    foreach ($stmt->fetchAll() as $row) $serviceRows[(int) $row['id']] = $row;
+
+    $qualifiedStmt = $pdo->prepare("
+        SELECT e.id, e.first_name, e.last_name, e.position
+        FROM employees e JOIN staff_services ss ON ss.employee_id = e.id AND ss.service_id = ?
+        WHERE e.branch_id = ? AND e.is_active = 1
+        ORDER BY e.first_name, e.last_name
+    ");
+    $perService = [];
+    $cursor = new DateTime($appointmentDateTime);
+    foreach ($serviceIds as $serviceId) {
+        if (!isset($serviceRows[$serviceId])) continue;
+        $minutes = (int) $serviceRows[$serviceId]['duration_minutes'] > 0 ? (int) $serviceRows[$serviceId]['duration_minutes'] : Scheduling::DEFAULT_DURATION_MINUTES;
+        $segmentStart = clone $cursor;
+        $segmentEnd = (clone $cursor)->modify("+{$minutes} minutes");
+        $qualifiedStmt->execute([$serviceId, $branchId]);
+        $options = array_map(function ($e) use ($pdo, $segmentStart, $minutes) {
+            $until = Scheduling::staffConflictUntil($pdo, (int) $e['id'], $segmentStart->format('Y-m-d H:i:s'), $minutes);
+            return [
+                'id' => (string) $e['id'],
+                'name' => trim($e['first_name'] . ' ' . $e['last_name']),
+                'role' => $e['position'] ?: '',
+                'available' => $until === null,
+                'busyUntil' => $until ? $until->format('h:i A') : null,
+            ];
+        }, $qualifiedStmt->fetchAll());
+        $perService[] = [
+            'id' => (string) $serviceId,
+            'name' => $serviceRows[$serviceId]['service_name'],
+            'durationMinutes' => $minutes,
+            'start' => $segmentStart->format('h:i A'),
+            'end' => $segmentEnd->format('h:i A'),
+            'staff' => $options,
+        ];
+        $cursor = $segmentEnd;
+    }
+
+    echo json_encode(['success' => true, 'staff' => $staff, 'busy' => $busy, 'services' => $perService]);
 } catch (PDOException $e) {
     http_response_code(500);
     error_log('getAvailableStaff error: ' . $e->getMessage());

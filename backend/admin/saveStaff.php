@@ -7,15 +7,21 @@
  * status, and attendance are computed in getDashboardData.php, not stored,
  * so they're not accepted here. Creating a new staff member needs a login
  * account (employees.user_id is NOT NULL + unique), so email + phone are
- * required for that path only; a temp password is generated and handed
- * back once so the admin can relay it.
+ * required for that path only; the account starts with an unusable random
+ * password and an emailed setup link (see AccountSetup.php) instead of a
+ * temp password relayed by the admin.
  */
 
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
+require_once '../config/url.php';
+require_once '../config/mail.php';
+require_once '../config/AccountSetup.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -135,13 +141,12 @@ try {
         throw new Exception("Default 'Staff' role not found in the database.");
     }
 
-    $tempPassword = bin2hex(random_bytes(4));
-    $hashed = password_hash($tempPassword, PASSWORD_DEFAULT);
+    $unusablePassword = password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT);
 
     $pdo->beginTransaction();
 
     $pdo->prepare('INSERT INTO users (role_id, email, password) VALUES (?, ?, ?)')
-        ->execute([$roleId, $email, $hashed]);
+        ->execute([$roleId, $email, $unusablePassword]);
     $newUserId = $pdo->lastInsertId();
 
     $pdo->prepare('INSERT INTO employees (user_id, first_name, last_name, phone_number, position, branch_id, hire_date) VALUES (?, ?, ?, ?, ?, ?, CURDATE())')
@@ -160,10 +165,11 @@ try {
 
     $pdo->commit();
 
+    AccountSetup::issueAndEmail($pdo, (int) $newUserId, $email, $name, 'Staff');
+
     echo json_encode([
         'success' => true,
-        'message' => 'Staff member added.',
-        'tempPassword' => $tempPassword,
+        'message' => "Staff member added. An account setup email has been sent to {$email}.",
     ]);
 } catch (PDOException $e) {
     if (isset($pdo) && $pdo->inTransaction()) {

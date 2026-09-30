@@ -1,10 +1,12 @@
 <?php
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/RateLimiter.php';
 require_once '../config/mail.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

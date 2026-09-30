@@ -88,7 +88,7 @@
 
         <div>
             <div class="px-3 pb-2">
-                <a href="../login/login.html" id="btnSignOut" class="w-full text-left flex items-center space-x-3 px-4 py-2.5 rounded-lg text-xs transition-all text-rose-400 hover:bg-rose-900/40 hover:text-rose-300">
+                <a href="../../backend/auth/logout.php" id="btnSignOut" class="w-full text-left flex items-center space-x-3 px-4 py-2.5 rounded-lg text-xs transition-all text-rose-400 hover:bg-rose-900/40 hover:text-rose-300">
                     <i class="fa-solid fa-right-from-bracket w-5 text-center"></i>
                     <span>Sign Out</span>
                 </a>
@@ -148,6 +148,28 @@
             </div>
         </section>
     </main>
+
+    <div id="clockOutModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 items-center justify-center hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl border border-gray-100 transform scale-95 transition-transform duration-300">
+            <div class="bg-slate-950 p-4 text-white flex justify-between items-center">
+                <h4 class="font-bold text-sm tracking-wide"><i class="fa-solid fa-user-clock text-amber-400 mr-2"></i>Clock Out Staff</h4>
+                <button id="btnCloseClockOutModal" class="text-gray-400 hover:text-white transition-all text-lg" aria-label="Close">&times;</button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <div class="rounded-xl bg-gray-50 border border-gray-200 p-3">
+                    <p class="font-bold text-slate-800 capitalize" id="clockOutName"></p>
+                    <p class="text-gray-500" id="clockOutSince"></p>
+                </div>
+                <div>
+                    <label for="clockOutTime" class="block text-[10px] text-gray-500 font-bold uppercase mb-1">Time they actually left</label>
+                    <input id="clockOutTime" type="time" class="w-full bg-gray-50 border border-gray-300 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500">
+                    <p class="text-[10px] text-gray-400 mt-1">Leave as-is to clock them out now. Must be after they clocked in.</p>
+                </div>
+                <p class="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 p-2.5">Use this when someone left without signing out. It's recorded with your name so the hours can be reviewed.</p>
+                <button id="btnConfirmClockOut" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-2.5 rounded-xl transition duration-150">Clock Out</button>
+            </div>
+        </div>
+    </div>
 
     <script src="../../scripts/cashier/cashier-common.js"></script>
     <script src="../../scripts/cashier/staff.js"></script>

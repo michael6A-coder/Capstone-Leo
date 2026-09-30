@@ -14,10 +14,13 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/CustomerNotifier.php';
 require_once '../config/EodLock.php';
+require_once '../config/CancellationPolicy.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Cashier', 'Admin'], true)) {
@@ -40,8 +43,11 @@ $allowedStatuses = ['Confirmed', 'In Progress', 'Completed', 'Cancelled', 'Resch
 // payment as bad without otherwise touching the booking's workflow status --
 // so this is the one case where $status is allowed to be empty.
 $paymentAttentionOnly = trim($_POST['paymentAction'] ?? '') === 'needs_attention';
+// "Verify" on a booking that isn't Pending (e.g. Reschedule Requested)
+// records the payment without moving the booking to Confirmed.
+$paymentVerifyOnly = trim($_POST['paymentAction'] ?? '') === 'verify';
 
-if ($referenceCode === '' || (!$paymentAttentionOnly && !in_array($status, $allowedStatuses, true))) {
+if ($referenceCode === '' || (!$paymentAttentionOnly && !$paymentVerifyOnly &&!in_array($status, $allowedStatuses, true))) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid booking reference or status.']);
     exit();
@@ -49,10 +55,10 @@ if ($referenceCode === '' || (!$paymentAttentionOnly && !in_array($status, $allo
 
 // Confirming a reservation (e.g. the "Admit Client" action) requires
 // recording a deposit -- same policy as backend/admin/updateBookingStatus.php.
-$allowedDepositMethods = ['Cash', 'GCash', 'Maya'];
+$allowedDepositMethods = ['Cash', 'GCash', 'Maya', 'PayMongo'];
 $depositAmount = null;
 $depositMethod = null;
-if ($status === 'Confirmed') {
+if ($status === 'Confirmed' || $paymentVerifyOnly) {
     $depositAmount = filter_var($_POST['depositAmount'] ?? '', FILTER_VALIDATE_FLOAT);
     $depositMethod = trim($_POST['depositMethod'] ?? '');
     if ($depositAmount === false || $depositAmount <= 0 || !in_array($depositMethod, $allowedDepositMethods, true)) {
@@ -70,10 +76,10 @@ try {
     // that belongs to another branch just won't match, same as not found.
     $isCashier = ($_SESSION['user_role'] ?? '') === 'Cashier';
     if ($isCashier) {
-        $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, branch_id, appointment_datetime, total_price, deposit_amount, reservation_amount_due FROM appointments WHERE reference_code = ? AND branch_id = ? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT ' . CancellationPolicy::COLUMNS . ', branch_id, total_price, reservation_amount_due FROM appointments WHERE reference_code = ? AND branch_id = ? LIMIT 1');
         $stmt->execute([$referenceCode, $_SESSION['branch_id'] ?? 0]);
     } else {
-        $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, branch_id, appointment_datetime, total_price, deposit_amount, reservation_amount_due FROM appointments WHERE reference_code = ? LIMIT 1');
+        $stmt = $pdo->prepare('SELECT ' . CancellationPolicy::COLUMNS . ', branch_id, total_price, reservation_amount_due FROM appointments WHERE reference_code = ? LIMIT 1');
         $stmt->execute([$referenceCode]);
     }
     $appointment = $stmt->fetch();
@@ -91,12 +97,49 @@ try {
         exit();
     }
 
+    // A service can only start on its appointment day -- starting a future
+    // booking early made the stylist show "With a client" days ahead.
+    if ($status === 'In Progress') {
+        $stmt = $pdo->prepare('SELECT DATE(?) > CURDATE()');
+        $stmt->execute([$appointment['appointment_datetime']]);
+        if ((int) $stmt->fetchColumn()) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'This appointment is on a later date -- it can only be started on the day itself.']);
+            exit();
+        }
+    }
+
     if ($paymentAttentionOnly) {
         $pdo->prepare("UPDATE appointments SET payment_status = 'Rejected' WHERE id = ?")->execute([$appointment['id']]);
         CustomerNotifier::notify($pdo, $appointmentCustomerId, 'PAYMENT_ATTENTION', "Your payment for {$referenceCode} needs attention. Please contact the branch.");
         $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "PAYMENT", ?)')
             ->execute(["Payment for booking {$referenceCode} flagged as needing attention."]);
         echo json_encode(['success' => true, 'message' => 'Payment flagged as needing attention.']);
+        exit();
+    }
+
+    if ($paymentVerifyOnly) {
+        if (in_array($appointment['status'], ['Cancelled', 'Completed'], true)) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'This booking can no longer have its reservation payment verified.']);
+            exit();
+        }
+        $minimum = (float) ($appointment['reservation_amount_due'] ?? $appointment['deposit_amount'] ?? 0);
+        $total = (float) $appointment['total_price'];
+        if (!is_finite((float) $depositAmount) || $depositAmount < $minimum - 0.001 || $depositAmount > $total + 0.001) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'The verified payment must cover Pay Now and cannot exceed the booking total.']);
+            exit();
+        }
+        $resolvedPaymentStatus = round($depositAmount * 100) >= round($total * 100)
+            ? 'Fully Paid' : 'Down Payment Verified';
+        $pdo->prepare('UPDATE appointments SET payment_status = ?, deposit_paid = 1, deposit_amount = ?, deposit_method = ?, deposit_recorded_by = ?, deposit_recorded_at = NOW() WHERE id = ?')
+            ->execute([$resolvedPaymentStatus, $depositAmount, $depositMethod, $_SESSION['user_id'], $appointment['id']]);
+        $paymentVerifiedLabel = $resolvedPaymentStatus === 'Fully Paid' ? 'Paid in Full' : 'Reservation Payment Received';
+        CustomerNotifier::notify($pdo, $appointmentCustomerId, 'PAYMENT_VERIFIED', "Your payment for {$referenceCode} has been verified. Status: {$paymentVerifiedLabel}.");
+        $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "PAYMENT", ?)')
+            ->execute(["Payment for booking {$referenceCode} verified."]);
+        echo json_encode(['success' => true, 'message' => 'Payment verified.']);
         exit();
     }
 
@@ -132,7 +175,10 @@ try {
         if ($status === 'Completed') {
             CustomerNotifier::notify($pdo, $appointmentCustomerId, 'COMPLETED', "Your appointment {$referenceCode} is now Completed. Thank you for choosing us!");
         } elseif ($status === 'Cancelled') {
-            CustomerNotifier::notify($pdo, $appointmentCustomerId, 'CANCELLED', "Your appointment {$referenceCode} has been cancelled.");
+            CustomerNotifier::notify($pdo, $appointmentCustomerId, 'CANCELLED', "Your appointment {$referenceCode} has been cancelled by the salon.");
+            if ($appointment['status'] !== 'Cancelled') {
+                CancellationPolicy::apply($pdo, $appointment, CancellationPolicy::BY_SALON);
+            }
         } elseif ($status === 'Reschedule Requested') {
             CustomerNotifier::notify($pdo, $appointmentCustomerId, 'RESCHEDULE', "Your appointment {$referenceCode} needs a schedule change. Please check the details.");
         }

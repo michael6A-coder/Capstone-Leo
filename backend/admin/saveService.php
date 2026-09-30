@@ -11,8 +11,11 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
+require_once '../config/Scheduling.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -68,6 +71,12 @@ $paymentRequirement = $paymentRequirementInput === '50% Down Payment' ? 'Half Pa
 if (!in_array($paymentRequirementInput, $allowedPaymentRequirements, true)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid reservation payment rule.']);
+    exit();
+}
+
+if ($durationMinutes > 0 && $durationMinutes < Scheduling::MIN_SERVICE_MINUTES) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'A service must be at least ' . Scheduling::MIN_SERVICE_MINUTES . ' minutes long.']);
     exit();
 }
 

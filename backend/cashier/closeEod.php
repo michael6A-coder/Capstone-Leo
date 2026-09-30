@@ -17,8 +17,11 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
+require_once '../config/Scheduling.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Cashier', 'Admin'], true)) {
@@ -122,9 +125,18 @@ try {
     $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "EOD", ?)')
         ->execute(["{$branch['branch_name']} EOD closed: {$invoiceCount} invoices, PHP " . number_format($grossRevenue, 2) . " gross revenue."]);
 
+    // The business day is over: anyone still on shift (forgot to sign out)
+    // is clocked out now, tagged so their hours can be reviewed.
+    $clockedOut = Scheduling::clockOutBranchAtEod($pdo, $branchId);
+    if ($clockedOut) {
+        $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "ATTENDANCE", ?)')
+            ->execute(["{$branch['branch_name']} EOD: clocked out " . implode(', ', $clockedOut) . ' (did not sign out).']);
+    }
+
     echo json_encode([
         'success' => true,
-        'message' => 'End-of-day closed and logged.',
+        'message' => 'End-of-day closed and logged.' . ($clockedOut ? ' Clocked out: ' . implode(', ', $clockedOut) . '.' : ''),
+        'clockedOut' => $clockedOut,
         'invoiceCount' => $invoiceCount,
         'grossRevenue' => $grossRevenue,
     ]);

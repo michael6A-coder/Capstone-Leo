@@ -152,18 +152,18 @@
   x-data="customerApp()" x-init="init()" x-cloak>
   <div class="h-1.5 w-full bg-gradient-to-r from-luxury-600 via-gold-500 to-luxury-800 topbar-shine"></div>
 
-  <div class="fixed top-4 right-4 z-[100] w-72 space-y-2" aria-live="polite">
+  <div class="fixed top-24 right-4 left-4 sm:left-auto z-[9999] sm:w-80 space-y-2" aria-live="polite">
     <template x-for="toast in toasts" :key="toast.id">
       <div x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-x-6"
         x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200"
         x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" :class="{
-             'border-emerald-700 bg-emerald-950/95': toast.type === 'success',
-             'border-rose-700 bg-rose-950/95': toast.type === 'error',
-             'border-luxury-700 bg-luxury-950/95': toast.type === 'info'
+             'border-[#86EFAC] bg-[#F0FDF4] text-[#14532D]': toast.type === 'success',
+             'border-[#FDA4AF] bg-[#FFF1F2] text-[#881337]': toast.type === 'error',
+             'border-[#99D5D6] bg-[#F0FAFA] text-[#06464A]': toast.type === 'info' || toast.type === 'system'
            }"
-        class="border rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm flex items-start gap-2 text-xs text-slate-100">
+        class="border-2 rounded-xl px-4 py-3 shadow-2xl flex items-start gap-2 text-[13px] font-semibold">
         <span x-text="toast.message" class="flex-1 leading-relaxed"></span>
-        <button @click="dismissToast(toast.id)" class="text-slate-400 hover:text-white shrink-0 leading-none text-base">
+        <button @click="dismissToast(toast.id)" class="opacity-60 hover:opacity-100 shrink-0 leading-none text-lg" aria-label="Dismiss">
           &times;
         </button>
       </div>
@@ -488,7 +488,7 @@
   </div>
 
   <div x-show="isReviewModalOpen" x-transition.opacity
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+    class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
     style="display: none">
     <div x-show="isReviewModalOpen" x-transition:enter="transition ease-out duration-200"
       x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"

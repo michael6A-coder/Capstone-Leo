@@ -136,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         LM.toast(res.body.message || 'Your password has been changed. Taking you to sign in.', 'good');
-        setTimeout(function () { window.location.href = '../portal-login/index.html'; }, 1700);
+        setTimeout(function () { window.location.href = 'login.html'; }, 1700);
       })
       .catch(function () {
         LM.loading(false);

@@ -13,9 +13,7 @@ document.addEventListener('alpine:init', () => {
     bookings: [],
     staffList: [],
     cashierList: [],
-    supplierList: [],
     inventory: [],
-    supplierOrders: [],
     promotions: [],
     weddingPackages: [],
     feedback: [],
@@ -42,9 +40,7 @@ document.addEventListener('alpine:init', () => {
         this.bookings = data.bookings;
         this.staffList = data.staffList;
         this.cashierList = data.cashierList;
-        this.supplierList = data.supplierList;
         this.inventory = data.inventory;
-        this.supplierOrders = data.supplierOrders;
         this.promotions = data.promotions;
         this.weddingPackages = data.weddingPackages;
         this.feedback = data.feedback;
@@ -119,17 +115,6 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    getOrderStatusBadgeClass(status) {
-      switch (status) {
-        case 'Order Placed': return 'admin-badge admin-badge--pending';
-        case 'Order Confirmed': return 'admin-badge admin-badge--info';
-        case 'Out for Delivery': return 'admin-badge admin-badge--info';
-        case 'Received': return 'admin-badge admin-badge--success';
-        case 'Completed': return 'admin-badge admin-badge--success';
-        default: return 'admin-badge admin-badge--neutral';
-      }
-    },
-
     getLowStockItems() {
       return this.inventory.filter(item => item.isActive && item.stock <= item.minQty);
     },
@@ -182,25 +167,14 @@ document.addEventListener('alpine:init', () => {
       return [...this.staffList].sort((a, b) => this.calculatePerformanceScore(b) - this.calculatePerformanceScore(a))[0];
     },
 
-    /* Customer scoring tier, derived from loyalty_points (which itself
-       already reflects each booking's per-service loyalty_multiplier --
-       see backend/admin/completeCheckout.php / backend/cashier/payment.php).
-       Purely a display banding over the same underlying number, same
-       pattern as calculatePerformanceScore() below for staff. */
-    getCustomerScoreTier(points) {
-      if (points >= 700) return 'VIP';
-      if (points >= 350) return 'Gold';
-      if (points >= 150) return 'Silver';
-      if (points >= 50) return 'Bronze';
-      return 'New';
-    },
-
-    getCustomerScoreBadgeClass(points) {
-      switch (this.getCustomerScoreTier(points)) {
+    /* Customer loyalty tier (VIP / Gold / Silver / Member) comes from the
+       backend -- completed visits in the last 12 months, see
+       backend/config/LoyaltyTier.php. This only picks the badge style. */
+    getCustomerTierBadgeClass(tier) {
+      switch (tier) {
         case 'VIP': return 'admin-badge admin-tier--vip';
         case 'Gold': return 'admin-badge admin-tier--gold';
         case 'Silver': return 'admin-badge admin-tier--silver';
-        case 'Bronze': return 'admin-badge admin-tier--bronze';
         default: return 'admin-badge admin-badge--neutral';
       }
     },

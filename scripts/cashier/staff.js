@@ -64,6 +64,11 @@ function renderStaff() {
           <span>Today: ${s.todaysWorkload} booking${s.todaysWorkload === 1 ? '' : 's'}</span>
           <span class="text-right truncate" title="${escapeHtml(s.nextAppointment || '')}">${s.nextAppointment ? 'Next: ' + escapeHtml(s.nextAppointment) : 'No upcoming'}</span>
         </div>
+        ${s.onShift ? `
+        <div class="flex items-center justify-between pt-1.5 border-t border-gray-100 text-[10px]">
+          <span class="text-gray-500">${s.clockInTime ? 'Clocked in ' + escapeHtml(s.clockInTime) : 'On shift'}</span>
+          <button data-clockout="${escapeHtml(s.id)}" class="text-rose-700 font-bold hover:underline"><i class="fa-solid fa-right-from-bracket mr-1"></i>Clock Out</button>
+        </div>` : ''}
       </div>
     `).join('') : `
     <div class="col-span-2 text-center py-10">
@@ -138,9 +143,43 @@ async function assignStaffToTicket() {
 }
 
 
+/* Manual clock-out for someone who left without signing out
+   (backend/cashier/clockOutStaff.php). The time defaults to now. */
+function openClockOutModal(staffId) {
+  const s = state.data.staffList.find(x => String(x.id) === String(staffId));
+  if (!s) return;
+  state.clockOutStaffId = s.id;
+  document.getElementById('clockOutName').textContent = s.name + ' · ' + (s.role || 'Staff');
+  document.getElementById('clockOutSince').textContent = s.clockInTime ? 'Clocked in today at ' + s.clockInTime : 'Currently on shift';
+  const now = new Date();
+  document.getElementById('clockOutTime').value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  CashierApp.showModal('clockOutModal');
+}
+
+async function confirmClockOut() {
+  const btn = document.getElementById('btnConfirmClockOut');
+  btn.disabled = true;
+  try {
+    const result = await CashierApp.post('clockOutStaff.php', { staffId: state.clockOutStaffId, time: document.getElementById('clockOutTime').value });
+    CashierApp.toast(result.message || (result.success ? 'Clocked out.' : 'Failed to clock out.'), result.success ? 'success' : 'error');
+    if (result.success) {
+      CashierApp.hideModal('clockOutModal');
+      await refreshData();
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function wireStaticEvents() {
   document.getElementById('staffTicketSelect').addEventListener('change', (e) => loadQualifiedStaff(e.target.value));
   document.getElementById('btnAssignStaffToTicket').addEventListener('click', assignStaffToTicket);
+  document.getElementById('staffContainerGrid').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-clockout]');
+    if (btn) openClockOutModal(btn.dataset.clockout);
+  });
+  document.getElementById('btnCloseClockOutModal').addEventListener('click', () => CashierApp.hideModal('clockOutModal'));
+  document.getElementById('btnConfirmClockOut').addEventListener('click', confirmClockOut);
 }
 
 document.addEventListener('DOMContentLoaded', init);

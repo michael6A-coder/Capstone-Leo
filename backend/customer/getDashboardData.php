@@ -12,6 +12,8 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/LoyaltyTier.php';
+require_once '../config/HomeServiceRequest.php';
 
 sendCorsHeaders();
 header('Content-Type: application/json');
@@ -52,6 +54,8 @@ try {
         'phone' => $customer['phone_number'],
         'memberSince' => date('Y-m-d', strtotime($customer['created_at'])),
         'loyaltyPoints' => (int) $customer['loyalty_points'],
+        // Frequency-based status (backend/config/LoyaltyTier.php).
+        'loyaltyTier' => LoyaltyTier::forCustomer($pdo, $customerId) + ['ladder' => LoyaltyTier::ladder()],
         'profilePicture' => $customer['profile_picture'],
         'notificationPrefs' => [
             'email' => (bool) $customer['notify_email'],
@@ -72,7 +76,7 @@ try {
             a.deposit_amount AS depositAmount,
             a.deposit_reference AS depositReference,
             a.deposit_recorded_by IS NOT NULL AS depositVerified,
-            CONCAT(e.first_name, ' ', e.last_name) AS staffName,
+            COALESCE((SELECT GROUP_CONCAT(DISTINCT CONCAT(se.first_name, ' ', se.last_name) ORDER BY sx.id SEPARATOR ', ') FROM appointment_services sx JOIN employees se ON se.id = COALESCE(sx.employee_id, a.employee_id) WHERE sx.appointment_id = a.id), CONCAT(e.first_name, ' ', e.last_name)) AS staffName,
             DATE_FORMAT(a.appointment_datetime, '%Y-%m-%d') AS date,
             DATE_FORMAT(a.appointment_datetime, '%h:%i %p') AS time,
             a.status AS status,
@@ -156,23 +160,48 @@ try {
             wedding_package AS weddingPackage,
             DATE_FORMAT(preferred_date, '%Y-%m-%d') AS preferredDate,
             preferred_time AS preferredTime,
+            preferred_date, preferred_time, reschedule_count, status AS rawStatus,
             deposit_amount AS depositAmount,
             deposit_method AS paymentMethod,
             deposit_reference AS depositReference,
+            quote_price AS quotePrice,
+            deposit_paid AS depositPaid,
+            CASE WHEN status = 'Payment Required' AND deposit_paid = 0 THEN paymongo_checkout_url END AS payUrl,
+            balance_checkout_url AS balancePayUrl,
+            (SELECT COALESCE(SUM(hp.amount), 0) FROM home_service_payments hp WHERE hp.home_service_request_id = home_service_requests.id) AS amountPaid,
             deposit_recorded_by IS NOT NULL AS depositVerified,
             requests,
             status,
             payment_status AS paymentStatus,
             DATE_FORMAT(submitted_at, '%Y-%m-%d') AS submittedDate
         FROM home_service_requests
-        WHERE customer_id = ?
+        -- Also requests made as a guest with this account's email (e.g. before
+        -- signing up, or with a different mobile number).
+        WHERE customer_id = ? OR (contact_email IS NOT NULL AND LOWER(contact_email) = (SELECT LOWER(email) FROM users WHERE id = ?))
         ORDER BY submitted_at DESC
     ");
-    $stmt->execute([$customerId]);
+    $stmt->execute([$customerId, $_SESSION['user_id']]);
     $homeServiceRequests = array_map(function ($row) {
         $row['id'] = (string) $row['id'];
         $row['depositAmount'] = $row['depositAmount'] !== null ? (float) $row['depositAmount'] : null;
         $row['depositVerified'] = (bool) $row['depositVerified'];
+        $row['quotePrice'] = $row['quotePrice'] !== null ? (float) $row['quotePrice'] : null;
+        $row['amountPaid'] = (float) $row['amountPaid'];
+        // Remaining balance after the DP (and any balance payments); 0 = fully paid.
+        $row['balanceDue'] = $row['quotePrice'] !== null ? max(0, round($row['quotePrice'] - $row['amountPaid'], 2)) : null;
+        if (!$row['balanceDue']) $row['balancePayUrl'] = null;
+        // Paid online through PayMongo counts as verified too.
+        $row['depositVerified'] = $row['depositVerified'] || ((int) $row['depositPaid'] === 1 && $row['paymentMethod'] === 'PayMongo');
+        // Online rescheduling (backend/customer/rescheduleHomeService.php).
+        $blocked = HomeServiceRequest::rescheduleBlockedReason([
+            'status' => $row['rawStatus'], 'reschedule_count' => $row['reschedule_count'],
+            'preferred_date' => $row['preferred_date'], 'preferred_time' => $row['preferred_time'],
+        ]);
+        $row['canReschedule'] = $blocked === null;
+        $row['rescheduleNote'] = $blocked;
+        $row['reschedulesLeft'] = max(0, HomeServiceRequest::MAX_ONLINE_RESCHEDULES - (int) $row['reschedule_count']);
+        $row['rescheduleCutoffDays'] = HomeServiceRequest::RESCHEDULE_CUTOFF_HOURS / 24;
+        unset($row['preferred_date'], $row['preferred_time'], $row['reschedule_count'], $row['rawStatus']);
         // Prefer the stored package; retain a fallback for older requests.
         if (!$row['weddingPackage'] && $row['requests'] && preg_match('/Wedding Package ([A-D])/', $row['requests'], $m)) {
             $row['weddingPackage'] = $m[1];

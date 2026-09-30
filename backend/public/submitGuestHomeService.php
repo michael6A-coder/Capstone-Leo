@@ -9,10 +9,12 @@
 
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/HomeServiceRequest.php';
 require_once '../config/RateLimiter.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -71,9 +73,11 @@ if (!$agreedToTerms) {
     exit();
 }
 
-if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+// Required: guests track and reschedule this request with reference + email,
+// and receive the quote / payment link / updates by email.
+if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Please enter a valid email address.']);
+    echo json_encode(['success' => false, 'message' => 'Please enter a valid email address — you\'ll use it to track and reschedule your request.']);
     exit();
 }
 
@@ -132,14 +136,16 @@ try {
     // (see backend/admin/updateBookingStatus.php).
     $ins = $pdo->prepare('
         INSERT INTO home_service_requests (
-            reference_code, customer_id, address, event_type, wedding_package, preferred_date, preferred_time,
+            reference_code, customer_id, contact_email, address, event_type, wedding_package, preferred_date, preferred_time,
             requests, number_of_clients, terms_accepted_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ');
     $ins->execute([
-        $referenceCode, $customerId, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $date, $time, $fullRequests, (int) $clients,
+        $referenceCode, $customerId, $email, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $date, $time, $fullRequests, (int) $clients,
     ]);
+    // Guest updates (quote, payment link, reschedules) go out by email.
+    $pdo->prepare('UPDATE customers SET email = ? WHERE id = ? AND user_id IS NULL AND (email IS NULL OR email = "")')->execute([$email, $customerId]);
 
     $requestId = $pdo->lastInsertId();
     $refStmt = $pdo->prepare('SELECT reference_code FROM home_service_requests WHERE id = ?');
@@ -150,7 +156,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => "Thank you! Your home service request {$referenceCode} has been received. Our team will review your request and contact you at {$contact} about availability, pricing, staff assignment, and any required reservation payment.",
+        'message' => "Thank you! Your home service request {$referenceCode} has been received. Our team will review your request and email you at {$email} about availability, pricing, staff assignment, and any required reservation payment. Track or reschedule it anytime with your reference number and this email.",
         'reference' => $referenceCode,
     ]);
 } catch (PDOException $e) {

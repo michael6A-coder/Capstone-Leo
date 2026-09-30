@@ -3,10 +3,10 @@
 /**
  * Admin: Deactivate / Reactivate Inventory Item
  *
- * Replaces the old hard-delete endpoint. inventory_adjustments and
- * supplier_orders both have ON DELETE CASCADE to inventory(id) -- deleting
- * a product with any adjustment/order history silently wiped that history
- * too. Deactivating (is_active = 0) removes it from active use (hidden from
+ * Replaces the old hard-delete endpoint. inventory_adjustments has
+ * ON DELETE CASCADE to inventory(id) -- deleting a product with any
+ * adjustment history silently wiped that history too. Deactivating
+ * (is_active = 0) removes it from active use (hidden from
  * the New Booking / cashier restock pickers by the existing is_active
  * filters elsewhere) while keeping every past record intact, and can be
  * reversed.
@@ -15,8 +15,10 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -61,14 +63,14 @@ try {
     ')->execute([
         $itemId,
         $active ? 'reactivate' : 'deactivate',
-        ($active ? 'Item reactivated: ' : 'Item deactivated: ') . $item['product_name'],
+        ($active ? 'Item restored from archive: ' : 'Item archived: ') . $item['product_name'],
         $stock, $stock, $_SESSION['user_id'],
     ]);
 
     $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "INVENTORY", ?)')
-        ->execute([($active ? 'Stock item reactivated: ' : 'Stock item deactivated: ') . $item['product_name'] . '.']);
+        ->execute([($active ? 'Stock item restored from archive: ' : 'Stock item archived: ') . $item['product_name'] . '.']);
 
-    echo json_encode(['success' => true, 'message' => $active ? 'Item reactivated.' : 'Item deactivated.']);
+    echo json_encode(['success' => true, 'message' => $active ? 'Item restored.' : 'Item archived.']);
 } catch (PDOException $e) {
     http_response_code(500);
     error_log('admin toggleInventoryItemActive error: ' . $e->getMessage());

@@ -33,7 +33,8 @@ try {
         $stmt->execute([$_SESSION['user_id']]);
         $points = (int) $stmt->fetchColumn();
     }
-    echo json_encode(['success' => true, 'quote' => ReservationPayment::quote($services, $points, $redeem)]);
+    $plan = ($_GET['paymentPlan'] ?? 'deposit') === 'full' ? 'full' : 'deposit';
+    echo json_encode(['success' => true, 'quote' => ReservationPayment::quote($services, $points, $redeem, $plan)]);
 } catch (InvalidArgumentException $e) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

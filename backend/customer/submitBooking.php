@@ -12,11 +12,16 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/Scheduling.php';
 require_once '../config/ReservationPayment.php';
 require_once '../config/CustomerNotifier.php';
+require_once '../config/PayMongo.php';
+require_once '../config/url.php';
+require_once '../config/CancellationPolicy.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || ($_SESSION['user_role'] ?? null) !== 'Customer') {
@@ -40,8 +45,8 @@ $customerName = trim($_POST['customerName'] ?? '');
 $customerPhone = trim($_POST['customerPhone'] ?? '');
 $paymentMethod = trim($_POST['paymentMethod'] ?? '');
 // Payment amounts are always calculated from the database, never POST data.
-$depositReference = trim($_POST['depositReference'] ?? '');
 $useLoyaltyPoints = filter_var($_POST['useLoyaltyPoints'] ?? false, FILTER_VALIDATE_BOOLEAN);
+$paymentPlan = ($_POST['paymentPlan'] ?? 'deposit') === 'full' ? 'full' : 'deposit';
 $agreedToTerms = filter_var($_POST['agreedToTerms'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 if (!is_array($serviceIds)) {
@@ -49,7 +54,8 @@ if (!is_array($serviceIds)) {
 }
 $serviceIds = array_values(array_filter(array_map('intval', $serviceIds)));
 
-$allowedPaymentMethods = ['Cash', 'GCash', 'Maya'];
+// Online reservation payments go through PayMongo only; Cash is paid in person at the branch.
+$allowedPaymentMethods = ['Cash', PayMongo::METHOD];
 
 if ($branchKey === '' || empty($serviceIds) || $date === '' || $time === '' || $customerName === '' || $customerPhone === ''
     || !in_array($paymentMethod, $allowedPaymentMethods, true)
@@ -59,9 +65,9 @@ if ($branchKey === '' || empty($serviceIds) || $date === '' || $time === '' || $
     exit();
 }
 
-if (($paymentMethod === 'GCash' || $paymentMethod === 'Maya') && $depositReference === '') {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Please enter your ' . $paymentMethod . ' reference number.']);
+if ($paymentMethod === PayMongo::METHOD && !PayMongo::isConfigured()) {
+    http_response_code(503);
+    echo json_encode(['success' => false, 'message' => 'Online payment is not available right now. Please choose another payment method.']);
     exit();
 }
 
@@ -125,6 +131,8 @@ try {
         exit();
     }
 
+    PayMongo::releaseExpiredHolds($pdo);
+
     $pdo->beginTransaction();
 
     // Locking read: serializes concurrent bookings for this branch+day so two
@@ -182,7 +190,7 @@ try {
     $pointsStmt = $pdo->prepare('SELECT loyalty_points FROM customers WHERE id = ? FOR UPDATE');
     $pointsStmt->execute([$customerId]);
     $customer['loyalty_points'] = (int) $pointsStmt->fetchColumn();
-    $quote = ReservationPayment::quote($services, $customer['loyalty_points'], $useLoyaltyPoints);
+    $quote = ReservationPayment::quote($services, $customer['loyalty_points'], $useLoyaltyPoints, $paymentPlan);
     $pointsUsed = $quote['pointsUsed'];
     $finalPrice = $quote['serviceTotal'];
     $depositAmount = $quote['amountDue'];
@@ -192,6 +200,16 @@ try {
         echo json_encode(['success' => false, 'quoteChanged' => true, 'message' => 'Your service price or payment requirement changed. Please review Pay Now again.']);
         exit();
     }
+    // PayMongo bookings are inserted unpaid; the deposit is recorded once
+    // PayMongo reports the checkout paid (see backend/config/PayMongo.php).
+    $payOnline = $paymentMethod === PayMongo::METHOD && $depositAmount > 0;
+    if ($payOnline && $depositAmount < PayMongo::MIN_AMOUNT) {
+        $pdo->rollBack();
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Online payment needs at least ₱' . number_format(PayMongo::MIN_AMOUNT, 2) . '. Please choose another payment method.']);
+        exit();
+    }
+    $paymentStatus = $payOnline ? 'Payment Required' : 'Awaiting Verification';
 
     $referenceCode = ''; // Generated atomically by the database insert trigger.
     $notes = "Booked for: {$customerName}, Phone: {$customerPhone}";
@@ -205,14 +223,15 @@ try {
         INSERT INTO appointments (
             reference_code, customer_id, employee_id, branch_id, appointment_datetime, total_price,
             preferred_payment_method, deposit_paid, deposit_amount, deposit_method, deposit_reference, deposit_recorded_at,
-            status, payment_status, reminder_sent, notes, terms_accepted_at, reservation_requirement, reservation_amount_due
+            status, payment_status, reminder_sent, notes, terms_accepted_at, reservation_requirement, reservation_amount_due, payment_plan
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NOW(), ?, ?, 0, ?, NOW(), ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? = 1, NOW(), NULL), ?, ?, 0, ?, NOW(), ?, ?, ?)
     ');
     $ins->execute([
         $referenceCode, $customerId, $employeeId, $branchId, $appointmentDateTime, $finalPrice,
-        $paymentMethod, $depositAmount, $paymentMethod, $depositReference !== '' ? $depositReference : null,
-        'Pending', 'Awaiting Verification', $notes, $quote['reservationRequirement'], $depositAmount,
+        $paymentMethod, $payOnline ? 0 : 1, $payOnline ? null : $depositAmount, $payOnline ? null : $paymentMethod,
+        null, $payOnline ? 0 : 1,
+        'Pending', $paymentStatus, $notes, $quote['reservationRequirement'], $depositAmount, $quote['paymentPlan'],
     ]);
     $appointmentId = $pdo->lastInsertId();
     $refStmt = $pdo->prepare('SELECT reference_code FROM appointments WHERE id = ?');
@@ -227,10 +246,34 @@ try {
     if ($pointsUsed > 0) {
         $pdo->prepare('UPDATE customers SET loyalty_points = loyalty_points - ? WHERE id = ?')
             ->execute([$pointsUsed, $customerId]);
+        $pdo->prepare('UPDATE appointments SET loyalty_points_used = ? WHERE id = ?')->execute([$pointsUsed, $appointmentId]);
     }
 
-    CustomerNotifier::notify($pdo, $customerId, 'BOOKING_SUBMITTED', "Your booking request {$referenceCode} has been received. Status: Waiting for Confirmation.");
-    CustomerNotifier::notify($pdo, $customerId, 'PAYMENT_SUBMITTED', "Your reservation payment for {$referenceCode} has been submitted and is now Payment Being Verified.");
+    $checkoutUrl = null;
+    if ($payOnline) {
+        // Created before commit so a PayMongo failure rolls the booking back
+        // instead of leaving an unpayable slot hold behind.
+        try {
+            $checkoutUrl = PayMongo::startCheckout($pdo, (int) $appointmentId, $referenceCode, $depositAmount, 'customer');
+        } catch (RuntimeException $e) {
+            $pdo->rollBack();
+            error_log('submitBooking PayMongo error: ' . $e->getMessage());
+            PaymentLog::record($pdo, 'api_error', null, null, null, $depositAmount, 'checkout_failed', $e->getMessage());
+            http_response_code(502);
+            echo json_encode(['success' => false, 'message' => 'We could not start the online payment. Please try again or choose another payment method.']);
+            exit();
+        }
+    }
+
+    CustomerNotifier::notify($pdo, $customerId, 'BOOKING_SUBMITTED', CancellationPolicy::bookingReceivedMessage(
+        $referenceCode, array_column($services, 'service_name'), $branch['branch_name'], $appointmentDateTime, $depositAmount, $quote['remainingBalance'], $payOnline));
+    if (!$payOnline) {
+        CustomerNotifier::notify($pdo, $customerId, 'PAYMENT_SUBMITTED', "Your reservation payment for {$referenceCode} has been submitted and is now Payment Being Verified.");
+    }
+    // Branch-wide log (admin notification bell) so the salon hears about new online bookings.
+    $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "BOOKING", ?)')
+        ->execute(["New booking {$referenceCode} from {$customerName} at {$branch['branch_name']} on "
+            . date('M j, Y g:i A', strtotime($appointmentDateTime)) . ($depositAmount <= 0 ? '.' : ($payOnline ? ' — online payment in progress.' : ' — payment awaiting verification.'))]);
 
     $pdo->commit();
 
@@ -240,6 +283,7 @@ try {
         'success' => true,
         'message' => "Your booking request {$referenceCode} has been sent!",
         'reference' => $referenceCode,
+        'checkoutUrl' => $checkoutUrl,
         'appointment' => [
             'id' => $referenceCode,
             'branchId' => $branchKey,
@@ -253,16 +297,16 @@ try {
             'staffName' => $staffName,
             'paymentMethod' => $paymentMethod,
             'depositAmount' => $depositAmount,
-            'depositReference' => $depositReference,
+            'depositReference' => '',
             'date' => $date,
             'time' => $time,
             'status' => 'Pending',
-            'paymentStatus' => 'Awaiting Verification',
+            'paymentStatus' => $paymentStatus,
             'reminderSent' => false,
         ],
         'loyaltyPoints' => (int) $customer['loyalty_points'] - $pointsUsed,
     ]);
-} catch (PDOException | InvalidArgumentException $e) {
+} catch (PDOException | InvalidArgumentException | RuntimeException $e) {
     if (isset($pdo) && $pdo->inTransaction()) {
         $pdo->rollBack();
     }

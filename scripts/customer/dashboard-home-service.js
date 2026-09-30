@@ -1,7 +1,60 @@
 // Home service request modal and status badge styling.
 
+// Estimated reservation fee (DP) shown while filling in the request. Mirrors
+// the wedding_packages table: a package with a fixed reservation fee uses it,
+// otherwise ~30% of the package price (rounded to ₱100). The admin sets the
+// final DP with the quote; it's paid online via PayMongo after that.
+const HS_DP_ESTIMATE_RATE = 0.30;
+const HS_WEDDING_PACKAGES = { A: { price: 5000, fee: null }, B: { price: 8000, fee: null }, C: { price: 10000, fee: null }, D: { price: 12000, fee: 2000 } };
+
 function customerHomeServiceMixin() {
   return {
+    hsEstimatedDp() {
+      const form = this.homeServiceForm || {};
+      if (form.eventType !== 'Wedding') return null;
+      const pkg = HS_WEDDING_PACKAGES[form.weddingPackage];
+      if (!pkg) return null;
+      if (pkg.fee) return { amount: pkg.fee, fixed: true, price: pkg.price };
+      return { amount: Math.round((pkg.price * HS_DP_ESTIMATE_RATE) / 100) * 100, fixed: false, price: pkg.price };
+    },
+
+    // Online reschedule (backend/customer/rescheduleHomeService.php): one
+    // request's inline form is open at a time.
+    hsRescheduleId: null,
+    hsRescheduleDate: '',
+    hsRescheduleTime: '09:00',
+    hsRescheduling: false,
+    hsRescheduleMin(request) {
+      const min = new Date(Date.now() + (request.rescheduleCutoffDays || 3) * 86400000);
+      return [min.getFullYear(), String(min.getMonth() + 1).padStart(2, '0'), String(min.getDate()).padStart(2, '0')].join('-');
+    },
+    openHomeServiceReschedule(request) {
+      this.hsRescheduleId = request.id;
+      this.hsRescheduleDate = '';
+      this.hsRescheduleTime = (request.preferredTime || '09:00').slice(0, 5);
+    },
+    submitHomeServiceReschedule(request) {
+      if (!this.hsRescheduleDate || !this.hsRescheduleTime) return this.pushToast('error', 'Please choose a new date and time.');
+      this.hsRescheduling = true;
+      const formData = new FormData();
+      formData.append('id', request.id);
+      formData.append('date', this.hsRescheduleDate);
+      formData.append('time', this.hsRescheduleTime);
+      fetch('../../backend/customer/rescheduleHomeService.php', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(body => {
+          if (!body.success) return this.pushToast('error', body.message || 'Could not reschedule this request.');
+          request.preferredDate = body.date;
+          request.preferredTime = body.time;
+          request.reschedulesLeft = Math.max(0, (request.reschedulesLeft || 1) - 1);
+          if (request.reschedulesLeft === 0) { request.canReschedule = false; request.rescheduleNote = 'No online changes left. Please contact the branch to change it again.'; }
+          this.hsRescheduleId = null;
+          this.pushToast('success', body.message || 'Your home service has been rescheduled.');
+        })
+        .catch(() => this.pushToast('error', 'A network error occurred while rescheduling.'))
+        .finally(() => { this.hsRescheduling = false; });
+    },
+
     // Maps the internal `home_service_requests.status` enum values
     // ('Pending Review'/'Confirmed'/'Completed'/'Cancelled') to
     // customer-friendly display labels. Display-only -- the internal

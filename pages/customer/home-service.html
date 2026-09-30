@@ -61,19 +61,19 @@
 
   <div class="h-1.5 w-full bg-gradient-to-r from-luxury-600 via-gold-500 to-luxury-800 topbar-shine"></div>
 
-  <div class="fixed top-4 right-4 z-[100] w-72 space-y-2" aria-live="polite">
+  <div class="fixed top-24 right-4 left-4 sm:left-auto z-[9999] sm:w-80 space-y-2" aria-live="polite">
     <template x-for="toast in toasts" :key="toast.id">
       <div x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-x-6"
            x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200"
            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
            :class="{
-             'border-emerald-700 bg-emerald-950/95': toast.type === 'success',
-             'border-rose-700 bg-rose-950/95': toast.type === 'error',
-             'border-luxury-700 bg-luxury-950/95': toast.type === 'info'
+             'border-[#86EFAC] bg-[#F0FDF4] text-[#14532D]': toast.type === 'success',
+             'border-[#FDA4AF] bg-[#FFF1F2] text-[#881337]': toast.type === 'error',
+             'border-[#99D5D6] bg-[#F0FAFA] text-[#06464A]': toast.type === 'info' || toast.type === 'system'
            }"
-           class="border rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm flex items-start gap-2 text-xs text-slate-100">
+           class="border-2 rounded-xl px-4 py-3 shadow-2xl flex items-start gap-2 text-[13px] font-semibold">
         <span x-text="toast.message" class="flex-1 leading-relaxed"></span>
-        <button @click="dismissToast(toast.id)" class="text-slate-400 hover:text-white shrink-0 leading-none text-base">&times;</button>
+        <button @click="dismissToast(toast.id)" class="opacity-60 hover:opacity-100 shrink-0 leading-none text-lg" aria-label="Dismiss">&times;</button>
       </div>
     </template>
   </div>
@@ -258,7 +258,41 @@
                   <p x-show="request.preferredTime"><strong class="text-slate-500 w-24 inline-block">Preferred Time:</strong> <span x-text="request.preferredTime"></span></p>
                   <p><strong class="text-slate-500 w-24 inline-block">Submitted:</strong> <span x-text="new Date(request.submittedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })"></span></p>
                   <p class="flex items-start"><strong class="text-slate-500 w-24 inline-block shrink-0">Details:</strong> <span class="text-slate-400 italic" x-text="request.requests || 'No special requests provided.'"></span></p>
-                  <p x-show="request.depositAmount"><strong class="text-slate-500 w-24 inline-block">Payment:</strong> <span x-text="formatPeso(request.depositAmount) + ' via ' + request.paymentMethod"></span> <span :class="request.depositVerified ? 'text-emerald-400' : 'text-amber-400'" class="font-bold" x-text="request.depositVerified ? '(Verified)' : '(Being Verified)'"></span></p>
+                  <p x-show="request.quotePrice"><strong class="text-slate-500 w-24 inline-block">Quote:</strong> <span class="font-semibold" x-text="formatPeso(request.quotePrice)"></span></p>
+                  <p x-show="request.depositAmount && request.paymentMethod"><strong class="text-slate-500 w-24 inline-block">Payment:</strong> <span x-text="formatPeso(request.depositAmount) + ' via ' + request.paymentMethod"></span> <span :class="request.depositVerified ? 'text-emerald-400' : 'text-amber-400'" class="font-bold" x-text="request.depositVerified ? '(Verified)' : '(Being Verified)'"></span></p>
+                </div>
+                <!-- Reservation fee (down payment) set with the quote, paid online through PayMongo. -->
+                <div x-show="request.status === 'Payment Required' && request.depositAmount && !request.paymentMethod" class="rounded-xl p-3 bg-[#FEF3C7] border border-[#FCD34D] text-[#78350F] text-xs space-y-2">
+                  <p><strong x-text="'Reservation fee due: ' + formatPeso(request.depositAmount)"></strong> — pay it to confirm your booking. The remaining balance is paid on the event day.</p>
+                  <a x-show="request.payUrl" :href="request.payUrl" class="inline-flex items-center justify-center w-full rounded-lg bg-[#006D6F] hover:bg-[#06464A] text-white font-bold py-2 transition"
+                     x-text="'Pay ' + formatPeso(request.depositAmount) + ' now (GCash, Maya or card)'"></a>
+                  <p x-show="!request.payUrl" class="text-[11px]">Online payment isn't available for this request — please contact the branch to pay in person.</p>
+                </div>
+                <!-- Remaining balance after the DP -->
+                <div x-show="request.quotePrice && request.amountPaid > 0 && request.status !== 'Cancelled'" class="rounded-xl p-3 text-xs space-y-2 border"
+                     :class="request.balanceDue > 0 ? 'bg-[#FEF3C7] border-[#FCD34D] text-[#78350F]' : 'bg-[#DCFCE7] border-[#86EFAC] text-[#166534]'">
+                  <p><strong x-text="request.balanceDue > 0 ? 'Remaining balance: ' + formatPeso(request.balanceDue) : 'Fully paid ✓'"></strong>
+                     <span class="opacity-80" x-text="' (paid ' + formatPeso(request.amountPaid) + ' of ' + formatPeso(request.quotePrice) + ')'"></span></p>
+                  <a x-show="request.balancePayUrl" :href="request.balancePayUrl" class="inline-flex items-center justify-center w-full rounded-lg bg-[#006D6F] hover:bg-[#06464A] text-white font-bold py-2 transition"
+                     x-text="'Pay ' + formatPeso(request.balanceDue) + ' now (GCash, Maya or card)'"></a>
+                  <p x-show="request.balanceDue > 0 && !request.balancePayUrl" class="text-[11px]">Pay it in cash on the event day, or ask the salon for an online payment link.</p>
+                </div>
+                <!-- Online reschedule -->
+                <div x-show="!['Completed', 'Cancelled'].includes(request.status)" class="pt-3 border-t border-slate-800 text-xs space-y-2">
+                  <button x-show="request.canReschedule && hsRescheduleId !== request.id" @click="openHomeServiceReschedule(request)"
+                          class="w-full bg-luxury-700 hover:bg-luxury-600 text-white font-semibold py-1.5 rounded-lg transition active:scale-95">Reschedule</button>
+                  <p x-show="!request.canReschedule && request.rescheduleNote" class="text-[11px] text-slate-500" x-text="request.rescheduleNote"></p>
+                  <div x-show="hsRescheduleId === request.id" class="rounded-xl p-3 bg-[#F7F1E6] border border-[#E4D7C0] text-[#1F2937] space-y-2">
+                    <p class="text-[11px] text-[#4B5563]" x-text="'Pick a new date at least ' + request.rescheduleCutoffDays + ' days away. Your quote, reservation fee and assigned team carry over (the team must be free then). ' + request.reschedulesLeft + ' online change' + (request.reschedulesLeft === 1 ? '' : 's') + ' left.'"></p>
+                    <div class="grid grid-cols-2 gap-2">
+                      <input type="date" x-model="hsRescheduleDate" :min="hsRescheduleMin(request)" class="w-full bg-white text-[#1F2937] rounded-lg p-2 border border-[#D9C9B4] focus:outline-none">
+                      <input type="time" x-model="hsRescheduleTime" class="w-full bg-white text-[#1F2937] rounded-lg p-2 border border-[#D9C9B4] focus:outline-none">
+                    </div>
+                    <div class="flex gap-2">
+                      <button type="button" @click="hsRescheduleId = null" class="flex-1 py-1.5 rounded-lg bg-[#EFE6D6] hover:bg-[#E4D7C0] font-bold">Keep Date</button>
+                      <button type="button" @click="submitHomeServiceReschedule(request)" :disabled="hsRescheduling" class="flex-1 py-1.5 rounded-lg bg-[#006D6F] hover:bg-[#06464A] text-white font-bold disabled:opacity-50" x-text="hsRescheduling ? 'Moving…' : 'Move Booking'"></button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </template>
@@ -387,8 +421,8 @@
             <p class="text-slate-400">The remaining balance shown is after the reservation fee is paid. No payment has been collected with this request.</p>
             <p><strong class="text-slate-500 inline-block w-32">Wedding Package:</strong> <span x-text="'Package ' + homeServiceForm.weddingPackage"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Package Price:</strong> <span x-text="({A:'₱5,000',B:'₱8,000',C:'₱10,000',D:'₱12,000'})[homeServiceForm.weddingPackage]"></span></p>
-            <p><strong class="text-slate-500 inline-block w-32">Reservation Fee:</strong> <span x-text="homeServiceForm.weddingPackage === 'D' ? '₱2,000' : 'To be confirmed after review.'"></span></p>
-            <p><strong class="text-slate-500 inline-block w-32">Remaining Balance:</strong> <span x-text="homeServiceForm.weddingPackage === 'D' ? '₱10,000' : 'To be confirmed after review.'"></span></p>
+            <p><strong class="text-slate-500 inline-block w-32">Reservation Fee (DP):</strong> <span x-text="hsEstimatedDp() ? (hsEstimatedDp().fixed ? formatPeso(hsEstimatedDp().amount) : 'about ' + formatPeso(hsEstimatedDp().amount) + ' (estimate)') : 'To be confirmed after review.'"></span></p>
+            <p><strong class="text-slate-500 inline-block w-32">Remaining Balance:</strong> <span x-text="hsEstimatedDp() ? (hsEstimatedDp().fixed ? '' : 'about ') + formatPeso(hsEstimatedDp().price - hsEstimatedDp().amount) + ' (paid on the event day)' : 'To be confirmed after review.'"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Venue Address:</strong> <span x-text="homeServiceForm.address || '—'"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Preferred Date:</strong> <span x-text="homeServiceForm.preferredDate || '—'"></span></p>
             <p><strong class="text-slate-500 inline-block w-32">Preferred Time:</strong> <span x-text="homeServiceForm.preferredTime || '—'"></span></p>
@@ -406,7 +440,30 @@
           <label class="block text-slate-400 mb-1">Preferred Time</label>
           <input type="time" x-model="homeServiceForm.preferredTime" required class="w-full bg-slate-950 text-slate-200 rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500">
         </div>
-        <p class="text-slate-500 -mt-2">Our team will review your preferred date, time, venue, and service requirements. Your request remains Under Review until we contact you and confirm the arrangements. No payment is collected when you submit this request.</p>
+        <p class="text-slate-500 -mt-2">Our team will review your preferred date, time, venue, and service requirements. Your request remains Under Review until we contact you and confirm the arrangements.</p>
+
+        <!-- How payment works + estimated DP -->
+        <div class="rounded-xl bg-[#F0FAFA] border border-[#99D5D6] text-[#1F2937] p-4 space-y-2.5">
+          <p class="font-bold text-[#06464A] text-[13px]">How payment works</p>
+          <ol class="list-decimal list-inside space-y-1 text-[12px] text-[#374151] leading-relaxed">
+            <li><b>No payment now</b> — just send this request.</li>
+            <li>We review it and send your <b>quote</b> with a <b>reservation fee (DP)</b> by notification and email.</li>
+            <li>Pay the DP <b>online via GCash, Maya or card</b> (PayMongo) from this page — your request is then <b>confirmed automatically</b>.</li>
+            <li>Pay the <b>remaining balance on the event day</b>.</li>
+          </ol>
+          <div class="rounded-lg bg-white border border-[#99D5D6] p-3 text-[12px]">
+            <template x-if="hsEstimatedDp()">
+              <p><span class="text-[#6B7280]">Estimated DP for Package <span x-text="homeServiceForm.weddingPackage"></span>:</span>
+                 <b class="text-[#06464A] text-[14px]" x-text="(hsEstimatedDp().fixed ? '' : 'about ') + formatPeso(hsEstimatedDp().amount)"></b>
+                 <span class="text-[#6B7280]" x-text="hsEstimatedDp().fixed ? '(fixed reservation fee)' : '(≈30% of ' + formatPeso(hsEstimatedDp().price) + ')'"></span></p>
+            </template>
+            <template x-if="!hsEstimatedDp()">
+              <p class="text-[#6B7280]" x-text="homeServiceForm.eventType === 'Wedding' ? 'Choose a package to see its estimated DP.' : 'Your DP is set in your quote — usually around 30% of the total, depending on venue, number of clients and services.'"></p>
+            </template>
+            <p class="mt-1 text-[11px] text-[#6B7280]">The final amount is confirmed in your quote.</p>
+          </div>
+          <p class="text-[11px] text-[#6B7280]">The DP is <b>non-refundable</b>, but it carries over if you <b>reschedule</b> (online, at least 3 days before the event).</p>
+        </div>
 
         <div>
           <label class="block text-slate-400 mb-1">Additional Requirements (optional)</label>
@@ -455,7 +512,7 @@
     </div>
   </div>
 
-  <div x-show="isHomeServiceSuccess" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
+  <div x-show="isHomeServiceSuccess" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
     <div x-show="isHomeServiceSuccess" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="isHomeServiceSuccess = false" class="bg-slate-900 border border-luxury-800 rounded-2xl max-w-sm w-full p-6 space-y-5 text-center">
       <div class="w-16 h-16 bg-emerald-950 border-4 border-emerald-800 rounded-full flex items-center justify-center mx-auto">
         <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -478,7 +535,7 @@
     </div>
   </div>
 
-  <div x-show="isTrackModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
+  <div x-show="isTrackModalOpen" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
     <div x-show="isTrackModalOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="closeTrackModal()" class="bg-slate-900 border border-luxury-800 rounded-2xl max-w-md w-full p-6 space-y-5">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
         <h3 class="text-base font-serif font-bold text-white">Track a Booking</h3>

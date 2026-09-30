@@ -6,7 +6,7 @@
  * always assigns the Customer role), so this is the supported way to add a
  * cashier terminal account. Each Cashier account is tied to exactly one
  * branch (users.branch_id) -- see database/migrations/007_cashier_branch_lock.sql
- * and backend/auth/portalLogin.php, which stores it in the session at login
+ * and backend/auth/login.php, which stores it in the session at login
  * and every backend/cashier/*.php endpoint enforces from there.
  *
  * Run from the command line:

@@ -156,6 +156,7 @@ main h3,
 main h4,
 main h5,
 main h6,
+main p.text-white,
 main td.text-white,
 main div.text-white,
 main span.text-white,
@@ -180,6 +181,11 @@ main .bg-slate-900,
 main [class*="from-slate-900"] {
   background-color: var(--admin-panel);
 }
+
+/* The admin and customer portals remap slate-900 to cream in their
+   theme-config.js, so their "from-slate-900" gradient panels are light and
+   keep the charcoal text above. Only the staff portal keeps a real dark
+   gradient; its white-text rule lives in staff-theme.css. */
 
 main .shadow-xl,
 main .shadow-2xl {
