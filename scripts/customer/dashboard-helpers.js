@@ -69,8 +69,10 @@ function getPaymentStatusLabel(appt) {
     'Down Payment Verified': 'Reservation Payment Received',
     'Fully Paid': 'Paid in Full',
     'Rejected': 'Payment Needs Attention',
+    'Refund Due': 'Deposit Refund Pending',
+    'Refund Processing': 'Refund Being Processed',
     'Refunded': 'Refunded',
-    'Forfeited': 'Reservation Payment Forfeited'
+    'Forfeited': 'Deposit Kept — Reschedule to Use'
   };
   const status = appt && appt.paymentStatus;
   return labels[status] || 'Payment Required';

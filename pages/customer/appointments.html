@@ -61,19 +61,19 @@
 
   <div class="h-1.5 w-full bg-gradient-to-r from-luxury-600 via-gold-500 to-luxury-800 topbar-shine"></div>
 
-  <div class="fixed top-4 right-4 z-[100] w-72 space-y-2" aria-live="polite">
+  <div class="fixed top-24 right-4 left-4 sm:left-auto z-[9999] sm:w-80 space-y-2" aria-live="polite">
     <template x-for="toast in toasts" :key="toast.id">
       <div x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-x-6"
            x-transition:enter-end="opacity-100 translate-x-0" x-transition:leave="transition ease-in duration-200"
            x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
            :class="{
-             'border-emerald-700 bg-emerald-950/95': toast.type === 'success',
-             'border-rose-700 bg-rose-950/95': toast.type === 'error',
-             'border-luxury-700 bg-luxury-950/95': toast.type === 'info'
+             'border-[#86EFAC] bg-[#F0FDF4] text-[#14532D]': toast.type === 'success',
+             'border-[#FDA4AF] bg-[#FFF1F2] text-[#881337]': toast.type === 'error',
+             'border-[#99D5D6] bg-[#F0FAFA] text-[#06464A]': toast.type === 'info' || toast.type === 'system'
            }"
-           class="border rounded-xl px-4 py-3 shadow-2xl backdrop-blur-sm flex items-start gap-2 text-xs text-slate-100">
+           class="border-2 rounded-xl px-4 py-3 shadow-2xl flex items-start gap-2 text-[13px] font-semibold">
         <span x-text="toast.message" class="flex-1 leading-relaxed"></span>
-        <button @click="dismissToast(toast.id)" class="text-slate-400 hover:text-white shrink-0 leading-none text-base">&times;</button>
+        <button @click="dismissToast(toast.id)" class="opacity-60 hover:opacity-100 shrink-0 leading-none text-lg" aria-label="Dismiss">&times;</button>
       </div>
     </template>
   </div>
@@ -261,7 +261,9 @@
                       <p x-show="appt.depositAmount"><strong class="text-slate-500 w-16 inline-block">Deposit:</strong> <span x-text="formatPeso(appt.depositAmount) + ' via ' + appt.paymentMethod"></span> <span :class="appt.depositVerified ? 'text-emerald-400' : 'text-amber-400'" class="font-bold" x-text="appt.depositVerified ? '(Verified)' : '(Pending Verification)'"></span></p>
                     </div>
                   </div>
+                  <p x-show="appt.status === 'Reschedule Requested'" class="text-[11px] font-semibold rounded-lg p-2 bg-amber-950 text-amber-300 border border-amber-800">The salon asked to move this appointment. Tap Reschedule to pick a new time — your payment carries over.</p>
                   <div class="pt-3 border-t border-slate-800 flex gap-2">
+                    <button x-show="canReschedule(appt)" @click="openRescheduleModal(appt)" class="w-full bg-luxury-700 hover:bg-luxury-600 text-white text-xs font-semibold py-1.5 rounded-lg transition active:scale-95">Reschedule</button>
                     <button @click="openCancelModal(appt.id)" class="w-full bg-rose-900/50 hover:bg-rose-900/80 text-rose-300 text-xs font-semibold py-1.5 rounded-lg transition active:scale-95">Cancel</button>
                   </div>
                 </div>
@@ -288,8 +290,11 @@
                       <p><strong class="text-slate-500 w-16 inline-block">Stylist:</strong> <span x-text="appt.staffName"></span></p>
                     </div>
                   </div>
+                  <p x-show="hasKeptDeposit(appt)" class="text-[11px] font-semibold rounded-lg p-2 bg-amber-950 text-amber-300 border border-amber-800"
+                     x-text="'Your ' + formatPeso(appt.depositAmount) + ' deposit is non-refundable, but you can still use it — tap Reschedule to pick a new time.'"></p>
                   <div class="pt-3 border-t border-slate-800 flex gap-2">
-                    <a href="services-promos.html" class="w-full text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-1.5 rounded-lg transition active:scale-95">Re-Book</a>
+                    <button x-show="hasKeptDeposit(appt)" @click="openRescheduleModal(appt)" class="w-full bg-luxury-700 hover:bg-luxury-600 text-white text-xs font-semibold py-1.5 rounded-lg transition active:scale-95">Reschedule</button>
+                    <a x-show="!hasKeptDeposit(appt)" href="services-promos.html" class="w-full text-center bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-1.5 rounded-lg transition active:scale-95">Re-Book</a>
                     <button @click="openReviewModal(appt)" class="w-full bg-gold-600 hover:bg-gold-500 text-slate-950 text-xs font-bold py-1.5 rounded-lg transition active:scale-95 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed" :disabled="!['Completed', 'Reviewed'].includes(appt.status)" x-text="appt.status === 'Reviewed' ? 'Edit Review' : 'Leave Review'"></button>
                   </div>
                 </div>
@@ -333,22 +338,120 @@
     </nav>
   </div>
 
-  <div x-show="isCancelModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
+  <!-- Reschedule dialog. Fixed hex colours (not the slate palette the theme
+       remaps) keep every label readable; z-[9998] keeps it above the sticky
+       page header; header + buttons stay put while the middle scrolls. -->
+  <div x-show="rescheduleAppt" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-[#0B2F31]/60 backdrop-blur-sm p-3 sm:p-6" style="display: none;">
+    <div x-show="rescheduleAppt" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="closeRescheduleModal()"
+         class="bg-[#FFFDF9] text-[#1F2937] border border-[#E4D7C0] rounded-2xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-2rem)] flex flex-col text-xs overflow-hidden">
+      <div class="flex justify-between items-center px-5 py-4 border-b border-[#E4D7C0] bg-[#006D6F] text-white shrink-0">
+        <h3 class="text-base font-serif font-bold">Reschedule Appointment</h3>
+        <button @click="closeRescheduleModal()" class="text-white/80 hover:text-white text-2xl leading-none" aria-label="Close">&times;</button>
+      </div>
+
+      <template x-if="rescheduleAppt">
+        <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div class="rounded-xl bg-[#F7F1E6] border border-[#E4D7C0] p-3 grid grid-cols-2 gap-x-3 gap-y-2.5">
+            <div><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Reference</span><span class="font-mono text-[#006D6F] break-all" x-text="rescheduleAppt.id"></span></div>
+            <div><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Status</span><span :class="getStatusBadgeClass(rescheduleAppt.status)" class="px-2 py-0.5 rounded text-[10px] font-bold" x-text="rescheduleAppt.status"></span></div>
+            <div class="col-span-2"><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Service(s)</span><span class="font-semibold text-[#1F2937]" x-text="rescheduleAppt.serviceName"></span></div>
+            <div><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Branch</span><span x-text="rescheduleAppt.branchName"></span></div>
+            <div><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Duration</span><span x-text="rescheduleAppt.durationMinutes + ' min'"></span></div>
+            <div x-show="rescheduleAppt.depositAmount"><span class="block text-[10px] text-[#6B7280] font-bold uppercase">Deposit</span><span x-text="formatPeso(rescheduleAppt.depositAmount)"></span> <span :class="rescheduleAppt.depositVerified ? 'text-[#15803D]' : 'text-[#B45309]'" class="font-bold" x-text="rescheduleAppt.depositVerified ? '(Verified)' : '(Pending)'"></span></div>
+          </div>
+
+          <div class="rounded-xl bg-[#FEF3C7] border border-[#FCD34D] p-3">
+            <span class="block text-[10px] text-[#92400E] font-bold uppercase">Current schedule</span>
+            <span class="font-semibold text-[#78350F]" x-text="rescheduleAppt.date + ' · ' + rescheduleAppt.time + (rescheduleAppt.staffName ? ' with ' + rescheduleAppt.staffName : '')"></span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="rescheduleDateInput" class="block text-[10px] text-[#6B7280] font-bold uppercase mb-1">New date</label>
+              <input id="rescheduleDateInput" type="date" x-model="rescheduleDate" :min="rescheduleMinDate()" @change="loadRescheduleSlots()" class="w-full bg-white text-[#1F2937] rounded-lg p-2.5 border border-[#D9C9B4] focus:outline-none focus:ring-2 focus:ring-[#006D6F]/30">
+            </div>
+            <div>
+              <label for="rescheduleStylistInput" class="block text-[10px] text-[#6B7280] font-bold uppercase mb-1">Stylist</label>
+              <select id="rescheduleStylistInput" x-model="rescheduleStaffId" @change="loadRescheduleSlots()" :disabled="rescheduleStaffId === null" class="w-full bg-white text-[#1F2937] rounded-lg p-2.5 border border-[#D9C9B4] focus:outline-none focus:ring-2 focus:ring-[#006D6F]/30">
+                <option value="">Any available stylist</option>
+                <template x-for="s in rescheduleStylists" :key="s.id">
+                  <option :value="s.id" :selected="s.id === rescheduleStaffId" x-text="s.name + (s.id === rescheduleCurrentStaffId ? ' (current)' : '')"></option>
+                </template>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between flex-wrap gap-1 mb-1.5">
+              <span class="text-[10px] text-[#6B7280] font-bold uppercase"
+                    x-text="rescheduleStylistName() ? 'New time · ' + rescheduleStylistName() + ' availability' : 'New time · any stylist'"></span>
+              <span class="flex items-center gap-2.5 text-[10px] text-[#6B7280]">
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded border border-[#9CA3AF] bg-white"></span>Open</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-[#006D6F]"></span>Selected</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-[#FFE4E6] border border-[#FDA4AF]"></span>Stylist busy</span>
+                <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded bg-[#F1F5F9] border border-[#E2E8F0]"></span>Unavailable</span>
+              </span>
+            </div>
+            <p x-show="rescheduleLoading" class="text-[#6B7280] italic py-2">Loading open times…</p>
+            <p x-show="rescheduleError" x-text="rescheduleError" class="text-[#881337] bg-[#FFF1F2] border border-[#FDA4AF] rounded-lg p-2.5 font-semibold"></p>
+            <p x-show="!rescheduleLoading && !rescheduleError && rescheduleSlots.length && !rescheduleOpenCount()" class="text-[#6B7280] italic py-2"
+               x-text="rescheduleStylistName() ? rescheduleStylistName() + ' has no free time on this date. Try another day or choose another stylist.' : 'No open times on this date. Try another day.'"></p>
+            <div x-show="!rescheduleLoading && !rescheduleError && rescheduleSlots.length" class="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-56 overflow-y-auto pr-1">
+              <template x-for="slot in rescheduleSlots" :key="slot.time">
+                <button type="button" :disabled="!slot.available || isCurrentSlot(slot.time)" @click="rescheduleTime = slot.time"
+                  :title="slot.reason === 'busy' ? (rescheduleStylistName() || 'Every qualified stylist') + ' is still with another client at this time' : ''"
+                  :class="rescheduleTime === slot.time
+                    ? 'bg-[#006D6F] border-[#006D6F] text-white'
+                    : (slot.reason === 'busy' && !isCurrentSlot(slot.time)
+                      ? 'bg-[#FFF1F2] border-[#FDA4AF] text-[#9F1239] cursor-not-allowed'
+                      : ((!slot.available || isCurrentSlot(slot.time)) ? 'bg-[#F1F5F9] border-[#E2E8F0] text-[#94A3B8] cursor-not-allowed' : 'bg-white border-[#D9C9B4] text-[#1F2937] hover:border-[#006D6F]'))"
+                  class="border rounded-lg py-1.5 px-1 font-semibold transition leading-tight">
+                  <span class="block" :class="(!slot.available || isCurrentSlot(slot.time)) && rescheduleTime !== slot.time ? 'line-through' : ''" x-text="slot.time"></span>
+                  <span x-show="slotReasonLabel(slot) && rescheduleTime !== slot.time" class="block text-[9px] font-bold" x-text="slotReasonLabel(slot)"></span>
+                </button>
+              </template>
+            </div>
+            <p x-show="rescheduleOpenCount()" class="text-[10px] text-[#6B7280] mt-1.5"
+               x-text="rescheduleOpenCount() + ' open time' + (rescheduleOpenCount() === 1 ? '' : 's') + ' · each fits your full ' + rescheduleDuration + '-min service before closing' + (rescheduleStylistName() ? ' and ' + rescheduleStylistName() + ' is free the whole time.' : '.')"></p>
+          </div>
+
+          <ul class="rounded-xl bg-[#F7F1E6] border border-[#E4D7C0] p-3 space-y-1 text-[11px] text-[#4B5563] list-disc list-inside">
+            <li>Same booking reference, services, and payment — nothing is charged again.</li>
+            <li x-text="rescheduleStylistName() ? 'Your booking moves to ' + rescheduleStylistName() + '. Times when they are still with another client are marked Stylist busy.' : 'Any free qualified stylist is assigned (your current one first, if free).'"></li>
+            <li x-text="rescheduleStatusNote()"></li>
+            <li>Online changes are allowed up to 24 hours before your appointment (anytime if the salon asked you to reschedule, or to use the deposit of a cancelled booking). For later changes, contact the branch.</li>
+          </ul>
+        </div>
+      </template>
+
+      <div class="flex gap-2 px-5 py-3 border-t border-[#E4D7C0] bg-[#FFFDF9] shrink-0">
+        <button type="button" @click="closeRescheduleModal()" class="flex-1 px-4 py-2.5 bg-[#EFE6D6] hover:bg-[#E4D7C0] rounded-lg text-[#1F2937] transition font-bold active:scale-95">Keep Current Time</button>
+        <button type="button" @click="confirmReschedule()" :disabled="!rescheduleTime || isRescheduling" class="flex-1 px-4 py-2.5 bg-[#006D6F] hover:bg-[#06464A] text-white font-bold rounded-lg transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" x-text="isRescheduling ? 'Moving…' : (rescheduleTime ? 'Move to ' + rescheduleTime : 'Pick a time')"></button>
+      </div>
+    </div>
+  </div>
+
+  <div x-show="isCancelModalOpen" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
     <div x-show="isCancelModalOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="closeCancelModal()" class="bg-slate-900 border border-luxury-800 rounded-2xl max-w-sm w-full p-6 space-y-5 text-center">
       <div class="mx-auto w-12 h-12 flex items-center justify-center rounded-full bg-rose-950 border-2 border-rose-800">
         <svg class="w-6 h-6 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
       </div>
       <h3 class="text-base font-serif font-bold text-white">Confirm Cancellation</h3>
       <p class="text-xs text-slate-400">Are you sure you want to cancel this appointment? This action cannot be undone.</p>
+      <p x-show="cancelDepositWarning()" x-text="cancelDepositWarning()" class="text-xs font-semibold rounded-lg p-2.5 bg-[#FFF1F2] text-[#881337] border border-[#FDA4AF]"></p>
+      <p class="text-[11px] text-slate-500">Policy: reservation deposits are non-refundable. Need a different time? Reschedule instead — your deposit carries over.</p>
 
-      <div class="pt-4 flex justify-center space-x-3">
-        <button type="button" @click="closeCancelModal()" class="px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition text-xs font-bold active:scale-95">Keep Appointment</button>
-        <button type="button" @click="confirmCancelAppointment()" class="px-6 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition text-xs active:scale-95">Yes, Cancel It</button>
+      <div class="pt-4 flex flex-col gap-2">
+        <button type="button" x-show="cancelAppointmentForReschedule() && canReschedule(cancelAppointmentForReschedule())" @click="rescheduleInsteadOfCancel()" class="w-full px-6 py-2 bg-luxury-700 hover:bg-luxury-600 text-white font-bold rounded-lg transition text-xs active:scale-95">Reschedule Instead</button>
+        <div class="flex justify-center gap-2">
+          <button type="button" @click="closeCancelModal()" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition text-xs font-bold active:scale-95">Keep Appointment</button>
+          <button type="button" @click="confirmCancelAppointment()" class="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition text-xs active:scale-95">Yes, Cancel It</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <div x-show="isReviewModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
+  <div x-show="isReviewModalOpen" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
     <div x-show="isReviewModalOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="closeReviewModal()" class="bg-slate-900 border border-luxury-800 rounded-2xl max-w-md w-full p-6 space-y-5">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
         <h3 class="text-base font-serif font-bold text-white" x-text="isEditingReview ? 'Edit Your Review' : 'Leave a Review'"></h3>
@@ -380,7 +483,7 @@
     </div>
   </div>
 
-  <div x-show="isTrackModalOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
+  <div x-show="isTrackModalOpen" x-transition.opacity class="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" style="display: none;">
     <div x-show="isTrackModalOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100" @click.outside="closeTrackModal()" class="bg-slate-900 border border-luxury-800 rounded-2xl max-w-md w-full p-6 space-y-5">
       <div class="flex items-center justify-between border-b border-slate-800 pb-3">
         <h3 class="text-base font-serif font-bold text-white">Track a Booking</h3>

@@ -100,7 +100,7 @@
 
       <div>
         <div class="p-4 border-t border-slate-800">
-          <a href="../login/login.html" onclick="handleLogoutConfirmation(event)" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
+          <a href="../../backend/auth/logout.php" onclick="handleLogoutConfirmation(event)" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"></path></svg>
             <span>Sign Out</span>
           </a>
@@ -164,7 +164,7 @@
             <span class="w-2.5 h-2.5 rounded-full" :class="$store.staff.isClockedIn() ? 'bg-emerald-400 pulse-dot' : 'bg-slate-600'"></span>
             <span class="text-xs font-semibold" :class="$store.staff.isClockedIn() ? 'text-emerald-400' : 'text-slate-500'" x-text="$store.staff.isClockedIn() ? 'On Shift • ' + $store.staff.getShiftDurationLabel() : 'Off Shift'"></span>
           </div>
-          <p class="text-[10px] text-slate-500 max-w-xs">Attendance is recorded automatically when you sign in and out -- no manual clock buttons needed.</p>
+          <p class="text-[10px] text-slate-500 max-w-xs">Attendance is recorded automatically when you sign in and out -- no manual clock buttons needed. <strong class="text-amber-400">Always tap Sign Out when you leave</strong>; otherwise you are clocked out at closing time (or by the cashier) and your hours are flagged for review.</p>
         </div>
 
         <div class="space-y-3">
@@ -230,7 +230,8 @@
                     <td class="p-3" x-text="row.clockOut || '—'"></td>
                     <td class="p-3" x-text="row.isOpen ? '—' : hoursBetween(row.date, row.clockIn, row.clockOut) + ' hrs'"></td>
                     <td class="p-3">
-                      <span class="px-2 py-0.5 rounded text-[9px] font-bold" :class="row.isOpen ? 'bg-emerald-950 text-emerald-300 border border-emerald-900/50' : 'bg-slate-800 text-slate-300 border border-slate-700'" x-text="row.isOpen ? 'Open' : 'Closed'"></span>
+                      <span class="px-2 py-0.5 rounded text-[9px] font-bold" :class="row.isOpen ? 'bg-emerald-950 text-emerald-300 border border-emerald-900/50' : (row.notes ? 'bg-amber-950 text-amber-300 border border-amber-800' : 'bg-slate-800 text-slate-300 border border-slate-700')" x-text="row.isOpen ? 'Open' : (row.notes ? 'Auto / cashier clock-out' : 'Closed')"></span>
+                      <span x-show="row.notes" class="block mt-1 text-[10px] text-slate-500" x-text="row.notes + '. Tell your admin if these hours are wrong.'"></span>
                     </td>
                   </tr>
                 </template>

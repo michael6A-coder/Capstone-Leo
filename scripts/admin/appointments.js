@@ -1,11 +1,12 @@
 function adminBookingsApp() {
   return {
     bookingFilterBranch: 'all',
-    bookingFilterStatus: 'Completed',
+    bookingFilterStatus: 'all',
 
     openStaffAssignModal: false,
     staffAssignBooking: null,
     selectedStaffId: '',
+    selectedStaffIds: [],
 
     openCheckoutModalFlag: false,
     checkoutBooking: null,
@@ -28,7 +29,8 @@ function adminBookingsApp() {
       const store = Alpine.store('admin');
       let list = store.bookings;
       if (this.bookingFilterBranch !== 'all') list = list.filter(b => b.branchId === this.bookingFilterBranch);
-      if (this.bookingFilterStatus !== 'all') list = list.filter(b => b.status === this.bookingFilterStatus);
+      if (this.bookingFilterStatus === 'refunds') list = list.filter(b => ['Refund Due', 'Refund Processing'].includes(b.paymentStatus));
+      else if (this.bookingFilterStatus !== 'all') list = list.filter(b => b.status === this.bookingFilterStatus);
       return list;
     },
 
@@ -57,22 +59,63 @@ function adminBookingsApp() {
     openStaffAssign(booking) {
       this.staffAssignBooking = booking;
       this.selectedStaffId = booking.staffId || '';
+      // Home service: a whole team can be picked (checkboxes).
+      this.selectedStaffIds = booking.isHomeService ? [...(booking.staffIds || [])] : [];
       this.openStaffAssignModal = true;
+    },
+
+    // Client count parsed from the request ("Number of clients: 7") -- used
+    // to suggest how many stylists to send.
+    homeServiceClientCount(booking) {
+      const match = String(booking?.requests || '').match(/Number of clients:\s*(\d+)/i);
+      return match ? Number(match[1]) : null;
+    },
+
+    canConfirmStaffAssignment() {
+      if (!this.staffAssignBooking) return false;
+      return this.staffAssignBooking.isHomeService ? this.selectedStaffIds.length > 0 : !!this.selectedStaffId;
     },
 
     async assignStaff() {
       const store = Alpine.store('admin');
-      if (!this.selectedStaffId || !this.staffAssignBooking) return;
-      const result = await store.post('assignStaff.php', {
-        id: this.staffAssignBooking.id,
-        staffId: this.selectedStaffId
-      });
+      if (!this.canConfirmStaffAssignment()) return;
+      const isHome = this.staffAssignBooking.isHomeService;
+      const result = await store.post('assignStaff.php', isHome
+        ? { id: this.staffAssignBooking.id, staffIds: this.selectedStaffIds }
+        : { id: this.staffAssignBooking.id, staffId: this.selectedStaffId });
       if (!result.success) {
         alert(result.message || 'Failed to assign staff.');
         return;
       }
       await store.refresh();
       this.openStaffAssignModal = false;
+      if (isHome && result.message) alert(result.message);
+    },
+
+    // A cancelled booking whose deposit is 'Refund Due' (cancellation policy).
+    // PayMongo deposits are refunded through PayMongo's API; Cash deposits are
+    // returned in person and only recorded here (backend/admin/refundDeposit.php).
+    isPaymongoDeposit(booking) {
+      return booking.depositMethod === 'PayMongo' && String(booking.depositReference || '').startsWith('pay_');
+    },
+
+    refundButtonLabel(booking) {
+      if (booking.paymentStatus === 'Refund Processing') return 'Check refund status';
+      return this.isPaymongoDeposit(booking) ? 'Refund via PayMongo' : 'Mark deposit refunded';
+    },
+
+    async refundDeposit(booking) {
+      if (booking.paymentStatus === 'Refund Due') {
+        const amount = Alpine.store('admin').formatCurrency(booking.depositAmount);
+        const question = this.isPaymongoDeposit(booking)
+          ? 'Refund ' + amount + ' for ' + booking.id + ' through PayMongo? The money goes back to the customer\'s GCash, Maya or card. This cannot be undone.'
+          : 'Mark the ' + amount + ' deposit for ' + booking.id + ' as refunded? Only do this after the cash has been returned to the customer.';
+        if (!confirm(question)) return;
+      }
+      const store = Alpine.store('admin');
+      const result = await store.post('refundDeposit.php', { reference: booking.id });
+      alert(result.message || (result.success ? 'Done.' : 'Failed to refund the deposit.'));
+      if (result.success) await store.refresh();
     },
 
     async updateBookingStatus(id, newStatus) {
@@ -86,7 +129,7 @@ function adminBookingsApp() {
     },
 
     openConfirmDeposit(booking) {
-      const allowedDepositMethods = ['Cash', 'GCash', 'Maya'];
+      const allowedDepositMethods = ['Cash', 'GCash', 'Maya', 'PayMongo'];
       this.depositBooking = booking;
       // Bookings made through the online deposit-first flow already carry a
       // self-reported deposit amount/method (unverified until this confirm
@@ -148,6 +191,65 @@ function adminBookingsApp() {
       }
       await store.refresh();
       this.openHomeServiceQuoteModal = false;
+      // Tells the admin whether a PayMongo link went out (or why not).
+      if (result.message) alert(result.message);
+    },
+
+    /* ---- Home service remaining balance (backend/admin/homeServiceBalance.php) ---- */
+
+    // Shown once the quote is set and the DP is settled (or none was needed).
+    homeServiceBalanceOpen(booking) {
+      return booking.isHomeService && booking.quotePrice && booking.status !== 'Cancelled'
+        && ['Quote Ready', 'Confirmed', 'Staff Assigned', 'Service in Progress', 'Completed'].includes(booking.status);
+    },
+
+    collectBalanceBooking: null,
+    collectBalanceAmount: '',
+    collectBalanceMethod: 'Cash',
+    collectBalanceReference: '',
+    openCollectBalance(booking) {
+      this.collectBalanceBooking = booking;
+      this.collectBalanceAmount = booking.remainingBalance;
+      this.collectBalanceMethod = 'Cash';
+      this.collectBalanceReference = '';
+    },
+    async submitCollectBalance() {
+      const booking = this.collectBalanceBooking;
+      if (!booking) return;
+      const store = Alpine.store('admin');
+      const result = await store.post('homeServiceBalance.php', {
+        id: booking.id, action: 'collect', amount: this.collectBalanceAmount,
+        method: this.collectBalanceMethod, reference: this.collectBalanceReference
+      });
+      alert(result.message || (result.success ? 'Payment recorded.' : 'Failed to record the payment.'));
+      if (!result.success) return;
+      this.collectBalanceBooking = null;
+      await store.refresh();
+    },
+    // Don't let a home service close quietly with money still owed.
+    async completeHomeService(booking) {
+      if (booking.quotePrice && booking.remainingBalance > 0) {
+        const amount = Alpine.store('admin').formatCurrency(booking.remainingBalance);
+        if (!confirm(`${amount} is still unpaid on ${booking.id}.\n\nOK = mark it Completed anyway (you can still collect the balance afterwards)\nCancel = go back and use "Collect Balance" first`)) return;
+      }
+      await this.updateBookingStatus(booking.id, 'Completed');
+    },
+
+    async sendBalanceLink(booking) {
+      const amount = Alpine.store('admin').formatCurrency(booking.remainingBalance);
+      if (!confirm(`Send ${booking.clientName} a PayMongo link to pay the remaining ${amount} online?`)) return;
+      const store = Alpine.store('admin');
+      const result = await store.post('homeServiceBalance.php', { id: booking.id, action: 'sendLink' });
+      alert(result.message || (result.success ? 'Link sent.' : 'Failed to send the link.'));
+      if (result.success) await store.refresh();
+    },
+    async editHomeServiceQuote(booking) {
+      const store = Alpine.store('admin');
+      const value = prompt(`Correct the final quote for ${booking.id} (already paid: ${store.formatCurrency(booking.amountPaid)}):`, booking.quotePrice);
+      if (value === null) return;
+      const result = await store.post('homeServiceBalance.php', { id: booking.id, action: 'editQuote', quotePrice: value.replace(/[^0-9.]/g, '') });
+      alert(result.message || (result.success ? 'Quote updated.' : 'Failed to update the quote.'));
+      if (result.success) await store.refresh();
     },
 
     async rejectHomeService(booking) {

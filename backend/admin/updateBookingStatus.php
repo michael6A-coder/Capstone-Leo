@@ -3,10 +3,13 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/CustomerNotifier.php';
 require_once '../config/StaffNotifier.php';
+require_once '../config/CancellationPolicy.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -57,7 +60,7 @@ try {
     // submitHomeServiceRequest.php), so confirming here also verifies it
     // (staff are expected to have checked the reference beforehand, same
     // trust model as the deposit modal's "Verify & Confirm").
-    $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, deposit_paid, deposit_recorded_by FROM home_service_requests WHERE reference_code = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, deposit_paid, deposit_recorded_by, deposit_amount, deposit_method, deposit_reference FROM home_service_requests WHERE reference_code = ? LIMIT 1');
     $stmt->execute([$referenceCode]);
     $homeService = $stmt->fetch();
     if ($homeService) {
@@ -80,6 +83,11 @@ try {
             // confirming one always resolves to 'Down Payment Verified'.
             $pdo->prepare("UPDATE home_service_requests SET status = ?, payment_status = 'Down Payment Verified', deposit_recorded_by = ?, deposit_recorded_at = NOW() WHERE id = ?")
                 ->execute([$status, $_SESSION['user_id'], $homeServiceId]);
+            // Verified DP becomes a payment record (home_service_payments, migration 049).
+            if ((float) $homeService['deposit_amount'] > 0) {
+                $pdo->prepare("INSERT INTO home_service_payments (home_service_request_id, kind, amount, method, reference, recorded_by) VALUES (?, 'deposit', ?, ?, ?, ?)")
+                    ->execute([$homeServiceId, $homeService['deposit_amount'], $homeService['deposit_method'] ?: 'Cash', $homeService['deposit_reference'], $_SESSION['user_id']]);
+            }
             CustomerNotifier::notify($pdo, $homeServiceCustomerId, 'PAYMENT_VERIFIED', "Your reservation payment for {$referenceCode} has been verified. Status: Reservation Payment Received.");
             CustomerNotifier::notify($pdo, $homeServiceCustomerId, 'CONFIRMED', "Your home service request {$referenceCode} is now Confirmed.");
         } elseif ($staffPaymentStatus !== '') {
@@ -117,7 +125,7 @@ try {
     // Confirming a reservation requires recording a deposit -- an unpaid Pending
     // booking stays soft/adjustable, but a deposit "locks" it and gives it
     // priority over any other unpaid claim on the same stylist/time.
-    $allowedDepositMethods = ['Cash', 'GCash', 'Maya'];
+    $allowedDepositMethods = ['Cash', 'GCash', 'Maya', 'PayMongo'];
     $depositAmount = null;
     $depositMethod = null;
     if ($status === 'Confirmed') {
@@ -130,7 +138,7 @@ try {
         }
     }
 
-    $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, branch_id, appointment_datetime, total_price, deposit_amount, reservation_amount_due FROM appointments WHERE reference_code = ? LIMIT 1');
+    $stmt = $pdo->prepare('SELECT ' . CancellationPolicy::COLUMNS . ', branch_id, total_price, reservation_amount_due FROM appointments WHERE reference_code = ? LIMIT 1');
     $stmt->execute([$referenceCode]);
     $appointment = $stmt->fetch();
     if (!$appointment) {
@@ -139,6 +147,23 @@ try {
         exit();
     }
     $appointmentCustomerId = (int) $appointment['customer_id'];
+    // Cancelled/No-Show trigger the deposit policy and waitlist alerts only
+    // on the transition itself, never when re-saving an already-closed booking.
+    $isNewClosure = in_array($status, ['Cancelled', 'No-Show'], true) && $appointment['status'] !== $status;
+
+    // A service can only start on its appointment day -- starting a future
+    // booking early made the stylist show "With a client" days ahead.
+    if ($status === 'In Progress') {
+        $stmt = $pdo->prepare('SELECT DATE(?) > CURDATE()');
+        $stmt->execute([$appointment['appointment_datetime']]);
+        if ((int) $stmt->fetchColumn()) {
+            http_response_code(409);
+            echo json_encode(['success' => false, 'message' => 'This appointment is on a later date -- it can only be started on the day itself.']);
+            exit();
+        }
+    }
+
+
 
     if ($status === 'Confirmed') {
         // Already-Confirmed wins: an unpaid Pending collision must not block
@@ -176,12 +201,35 @@ try {
         if ($staffPaymentStatus === 'Rejected') {
             CustomerNotifier::notify($pdo, $appointmentCustomerId, 'PAYMENT_ATTENTION', "Your payment for {$referenceCode} needs attention. Please contact the branch.");
         }
+        if (in_array($staffPaymentStatus, ['Refunded', 'Forfeited'], true) && $appointment['payment_status'] !== $staffPaymentStatus) {
+            PaymentLog::record($pdo, $staffPaymentStatus === 'Refunded' ? 'refunded' : 'deposit_forfeited', (int) $appointment['id'], $referenceCode,
+                null, (float) $appointment['deposit_amount'], $staffPaymentStatus, ['by' => 'admin', 'user_id' => $_SESSION['user_id']]);
+            if ($staffPaymentStatus === 'Refunded') {
+                CustomerNotifier::notify($pdo, $appointmentCustomerId, 'PAYMENT_REFUNDED',
+                    'Your ₱' . number_format((float) $appointment['deposit_amount'], 2) . " reservation deposit for {$referenceCode} has been refunded.");
+            }
+        }
+        if ($isNewClosure) {
+            // Staff picked the deposit outcome explicitly -- skip the automatic
+            // policy, but still record the closure and free the stylist.
+            $pdo->prepare('UPDATE appointments SET cancelled_at = COALESCE(cancelled_at, NOW()) WHERE id = ?')->execute([$appointment['id']]);
+            if ($appointment['employee_id'] !== null) {
+                Waitlist::notifyOpening($pdo, (int) $appointment['employee_id'], $appointment['appointment_datetime']);
+            }
+        }
     } else {
         $pdo->prepare('UPDATE appointments SET status = ? WHERE id = ?')->execute([$status, $appointment['id']]);
         if ($status === 'Cancelled') {
-            CustomerNotifier::notify($pdo, $appointmentCustomerId, 'CANCELLED', "Your appointment {$referenceCode} has been cancelled.");
+            CustomerNotifier::notify($pdo, $appointmentCustomerId, 'CANCELLED', "Your appointment {$referenceCode} has been cancelled by the salon.");
             if ($appointment['employee_id'] !== null) {
                 StaffNotifier::notify($pdo, (int) $appointment['employee_id'], 'APPOINTMENT_CANCELLED', "Appointment {$referenceCode} was cancelled.");
+            }
+            if ($isNewClosure) {
+                CancellationPolicy::apply($pdo, $appointment, CancellationPolicy::BY_SALON);
+            }
+        } elseif ($status === 'No-Show') {
+            if ($isNewClosure) {
+                CancellationPolicy::apply($pdo, $appointment, CancellationPolicy::NO_SHOW);
             }
         } elseif ($status === 'Completed') {
             CustomerNotifier::notify($pdo, $appointmentCustomerId, 'COMPLETED', "Your appointment {$referenceCode} is now Completed. Thank you for choosing us!");

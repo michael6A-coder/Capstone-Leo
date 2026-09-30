@@ -15,3 +15,16 @@ function getProjectBaseUrl(): string
     }
     return '';
 }
+
+/**
+ * Same as getProjectBaseUrl(), but with the scheme and host prepended --
+ * needed anywhere the link has to work outside the browser that requested
+ * it, e.g. in an emailed account-setup link, where a root-relative path
+ * alone can't be resolved.
+ */
+function getProjectFullBaseUrl(): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    return $scheme . '://' . $host . getProjectBaseUrl();
+}

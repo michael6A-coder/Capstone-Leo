@@ -71,7 +71,7 @@
 
       <div>
         <div class="p-4 border-t border-slate-800">
-          <a href="../login/login.html" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
+          <a href="../../backend/auth/logout.php" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"></path></svg>
             <span>Sign Out</span>
           </a>
@@ -238,7 +238,7 @@
                     <td class="p-3 text-center">
                       <span :class="getStaffStatusBadgeClass(staff.status)" class="px-2 py-0.5 rounded text-[10px] font-bold" x-text="getStaffStatusLabel(staff.status)"></span>
                     </td>
-                    <td class="p-3 text-center font-bold text-indigo-400" x-text="staff.attendance + '%'"></td>
+                    <td class="p-3 text-center"><span class="font-bold text-indigo-400" x-text="staff.attendance + '%'"></span><span x-show="staff.missedSignOuts" class="block text-[10px] font-semibold text-amber-500" :title="'Shifts in the last 30 days closed automatically or by a cashier because the staff member did not sign out -- review their hours.'" x-text="staff.missedSignOuts + ' missed sign-out' + (staff.missedSignOuts === 1 ? '' : 's')"></span></td>
                   </tr>
                 </template>
                 <template x-if="getDirectoryStaff().length === 0">
@@ -326,7 +326,7 @@
                       </span>
                     </td>
                     <td class="p-3 text-center text-slate-600 italic text-[10px]" x-show="!isServiceRole(staff)">—</td>
-                    <td class="p-3 text-center font-bold text-indigo-400" x-text="staff.attendance + '%'"></td>
+                    <td class="p-3 text-center"><span class="font-bold text-indigo-400" x-text="staff.attendance + '%'"></span><span x-show="staff.missedSignOuts" class="block text-[10px] font-semibold text-amber-500" :title="'Shifts in the last 30 days closed automatically or by a cashier because the staff member did not sign out -- review their hours.'" x-text="staff.missedSignOuts + ' missed sign-out' + (staff.missedSignOuts === 1 ? '' : 's')"></span></td>
                   </tr>
                 </template>
                 <template x-if="getPerformanceStaff().length === 0">

@@ -71,7 +71,7 @@
 
       <div>
         <div class="p-4 border-t border-slate-800">
-          <a href="../login/login.html" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
+          <a href="../../backend/auth/logout.php" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"></path></svg>
             <span>Sign Out</span>
           </a>
@@ -137,6 +137,9 @@
             <option value="staff">Staff Performance</option>
             <option value="inventory">Inventory</option>
             <option value="feedback">Customer / Feedback</option>
+            <option value="payments">Online Payment Log</option>
+            <option value="reconciliation">PayMongo Reconciliation</option>
+            <option value="activity">Activity Log</option>
           </select>
 
           <span class="text-xs text-slate-400 font-semibold ml-2">Branch:</span>
@@ -317,6 +320,140 @@
             <template x-if="getReportFeedback().length === 0">
               <p class="text-slate-500 text-xs italic text-center py-6">No reviews match the current filters.</p>
             </template>
+          </div>
+        </div>
+
+        <!-- Online payment log (payment_transactions) -->
+        <div x-show="reportType === 'payments'" x-effect="if (reportType === 'payments' && !paymentLogLoaded) loadPaymentLog()" class="bg-slate-900 border border-luxury-900 p-5 rounded-2xl space-y-4">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 class="font-serif text-sm font-bold text-white">Online Payment Log</h3>
+              <p class="text-[11px] text-slate-400">Every PayMongo checkout, payment, expiry, webhook delivery, and deposit forfeit/refund. Newest first.</p>
+            </div>
+            <form @submit.prevent="loadPaymentLog()" class="flex gap-2">
+              <input x-model="paymentLogSearch" type="text" placeholder="Booking reference…" class="bg-slate-950 text-slate-300 text-xs rounded-lg p-2 border border-slate-800 focus:ring-purple-500 focus:outline-none">
+              <button type="submit" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg">Search</button>
+            </form>
+          </div>
+          <p x-show="paymentLogError" x-text="paymentLogError" class="text-rose-400 text-xs"></p>
+          <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="text-[10px] uppercase text-slate-500 sticky top-0 bg-slate-900">
+                <tr><th class="p-2">Time</th><th class="p-2">Booking</th><th class="p-2">Event</th><th class="p-2">Amount</th><th class="p-2">Status</th><th class="p-2">PayMongo ID</th><th class="p-2">Details</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <template x-for="e in paymentLog" :key="e.id">
+                  <tr class="text-slate-300 align-top">
+                    <td class="p-2 whitespace-nowrap text-slate-400" x-text="e.createdAt"></td>
+                    <td class="p-2 whitespace-nowrap font-semibold" x-text="e.reference || '—'"></td>
+                    <td class="p-2 whitespace-nowrap"><span class="admin-badge" :class="paymentEventBadge(e.event)" x-text="paymentEventLabel(e.event)"></span></td>
+                    <td class="p-2 whitespace-nowrap" x-text="e.amount !== null ? $store.admin.formatCurrency(e.amount) : '—'"></td>
+                    <td class="p-2 whitespace-nowrap" x-text="e.status || '—'"></td>
+                    <td class="p-2 font-mono text-[10px] text-slate-400" x-text="e.externalId || '—'"></td>
+                    <td class="p-2 text-[10px] text-slate-500 max-w-xs truncate" :title="e.details" x-text="e.details || ''"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p x-show="paymentLogLoaded && paymentLog.length === 0" class="text-slate-500 text-xs italic text-center py-6">No online payment events yet.</p>
+          </div>
+        </div>
+
+        <!-- PayMongo Reconciliation: PayMongo's payments vs. the bookings recorded here -->
+        <div x-show="reportType === 'reconciliation'" x-effect="if (reportType === 'reconciliation' && !reconciliation && !reconciling && !reconcileError) runReconciliation()" class="bg-slate-900 border border-luxury-900 p-5 rounded-2xl space-y-4">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 class="font-serif text-sm font-bold text-white">PayMongo Reconciliation</h3>
+              <p class="text-[11px] text-slate-400">Checks every payment PayMongo received against the bookings in this system. Uses the date filter above (default: last 30 days). Branch filter doesn't apply.</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" x-model="reconcileIssuesOnly"> Issues only</label>
+              <button type="button" @click="runReconciliation()" :disabled="reconciling" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg disabled:opacity-50" x-text="reconciling ? 'Checking PayMongo…' : 'Run again'"></button>
+            </div>
+          </div>
+          <p x-show="reconcileError" x-text="reconcileError" class="text-rose-400 text-xs"></p>
+          <template x-if="reconciliation">
+            <div class="space-y-4">
+              <p class="text-[11px] text-slate-500" x-text="'Period: ' + reconciliation.from + ' to ' + reconciliation.to"></p>
+              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">Payments</span><span class="text-lg font-bold text-white" x-text="reconciliation.totals.count"></span></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">Gross</span><span class="text-lg font-bold text-white" x-text="$store.admin.formatCurrency(reconciliation.totals.gross)"></span></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">PayMongo fees</span><span class="text-lg font-bold text-white" x-text="$store.admin.formatCurrency(reconciliation.totals.fees)"></span></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">Net to salon</span><span class="text-lg font-bold text-emerald-400" x-text="$store.admin.formatCurrency(reconciliation.totals.net)"></span></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">Refunded</span><span class="text-lg font-bold text-white" x-text="$store.admin.formatCurrency(reconciliation.totals.refunded)"></span></div>
+                <div class="bg-slate-950 border border-slate-800 rounded-xl p-3"><span class="block text-[10px] uppercase text-slate-500">Needs attention</span><span class="text-lg font-bold" :class="reconciliation.totals.issues ? 'text-amber-400' : 'text-emerald-400'" x-text="reconciliation.totals.issues"></span></div>
+              </div>
+              <p x-show="reconciliation.truncated" class="text-amber-400 text-xs">This period has more payments than one check can read; narrow the dates to see them all.</p>
+              <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="text-[10px] uppercase text-slate-500 sticky top-0 bg-slate-900">
+                    <tr><th class="p-2">Paid</th><th class="p-2">Booking</th><th class="p-2">Result</th><th class="p-2">PayMongo amount</th><th class="p-2">Fee</th><th class="p-2">Refunded</th><th class="p-2">In system</th><th class="p-2">Payment ID</th><th class="p-2"></th></tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800">
+                    <template x-for="r in reconcileRows()" :key="r.paymentId + r.reference">
+                      <tr class="text-slate-300 align-top">
+                        <td class="p-2 whitespace-nowrap text-slate-400" x-text="r.paidAt"></td>
+                        <td class="p-2 whitespace-nowrap font-semibold" x-text="r.reference || '—'"></td>
+                        <td class="p-2 min-w-[14rem]"><span class="admin-badge" :class="reconcileBadge(r.severity)" x-text="r.severity === 'ok' ? 'OK' : (r.severity === 'danger' ? 'Problem' : 'Check')"></span> <span class="block mt-1 text-[11px] text-slate-400" x-text="r.issue"></span></td>
+                        <td class="p-2 whitespace-nowrap" x-text="r.amount !== null ? $store.admin.formatCurrency(r.amount) + (r.method ? ' · ' + r.method : '') : '—'"></td>
+                        <td class="p-2 whitespace-nowrap" x-text="r.fee !== null ? $store.admin.formatCurrency(r.fee) : '—'"></td>
+                        <td class="p-2 whitespace-nowrap" x-text="r.refunded ? $store.admin.formatCurrency(r.refunded) : '—'"></td>
+                        <td class="p-2 whitespace-nowrap" x-text="r.systemPaymentStatus ? (r.systemPaymentStatus + (r.systemAmount !== null ? ' · ' + $store.admin.formatCurrency(r.systemAmount) : '')) : '—'"></td>
+                        <td class="p-2 font-mono text-[10px] text-slate-400" x-text="r.paymentId || '—'"></td>
+                        <td class="p-2"><button type="button" x-show="r.canSync" @click="syncPayment(r)" class="text-[10px] font-bold text-amber-400 hover:underline whitespace-nowrap">Record payment</button></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+                <p x-show="reconcileRows().length === 0" class="text-slate-500 text-xs italic text-center py-6" x-text="reconcileIssuesOnly ? 'No issues — everything matches.' : 'No PayMongo payments in this period.'"></p>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- Activity Log: every change made by staff, customers and guests -->
+        <div x-show="reportType === 'activity'" x-effect="if (reportType === 'activity' && !activityLogLoaded) loadActivityLog()" class="bg-slate-900 border border-luxury-900 p-5 rounded-2xl space-y-4">
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h3 class="font-serif text-sm font-bold text-white">Activity Log</h3>
+              <p class="text-[11px] text-slate-400">Who changed what and when: bookings, payments, services, staff, settings, sign-ins and failed sign-ins. Uses the date filter above. Newest first.</p>
+            </div>
+            <form @submit.prevent="loadActivityLog()" class="flex flex-wrap gap-2">
+              <select x-model="activityRole" class="bg-slate-950 text-slate-300 text-xs rounded-lg p-2 border border-slate-800 focus:ring-purple-500 focus:outline-none">
+                <option value="">Everyone</option>
+                <option value="Admin">Admins</option>
+                <option value="Cashier">Cashiers</option>
+                <option value="Staff">Staff</option>
+                <option value="Customer">Customers</option>
+                <option value="Guest">Guests</option>
+              </select>
+              <input x-model="activitySearch" type="text" placeholder="Name, action or reference…" class="bg-slate-950 text-slate-300 text-xs rounded-lg p-2 border border-slate-800 focus:ring-purple-500 focus:outline-none">
+              <button type="submit" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg">Search</button>
+            </form>
+          </div>
+          <p x-show="activityError" x-text="activityError" class="text-rose-400 text-xs"></p>
+          <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="text-[10px] uppercase text-slate-500 sticky top-0 bg-slate-900">
+                <tr><th class="p-2">Time</th><th class="p-2">Who</th><th class="p-2">Action</th><th class="p-2">Record</th><th class="p-2">Result</th><th class="p-2"></th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <template x-for="entry in activityLog" :key="entry.id">
+                  <tr class="text-slate-300 align-top">
+                    <td class="p-2 whitespace-nowrap text-slate-400" x-text="entry.createdAt"></td>
+                    <td class="p-2 whitespace-nowrap"><span class="font-semibold" x-text="entry.actor || '—'"></span> <span class="block text-[10px] text-slate-500" x-text="entry.role || 'Guest'"></span></td>
+                    <td class="p-2">
+                      <span x-text="entry.label"></span>
+                      <pre x-show="activityExpandedId === entry.id" class="mt-2 whitespace-pre-wrap text-[10px] text-slate-400 bg-slate-950 border border-slate-800 rounded-lg p-2" x-text="activityDetails(entry) + (entry.ip ? '\nIP: ' + entry.ip : '')"></pre>
+                    </td>
+                    <td class="p-2 whitespace-nowrap font-mono text-[11px]" x-text="entry.reference || '—'"></td>
+                    <td class="p-2"><span class="admin-badge" :class="entry.outcome === 'failed' ? 'admin-badge--danger' : 'admin-badge--success'" x-text="entry.outcome === 'failed' ? 'Failed' : 'OK'"></span> <span class="block mt-1 text-[10px] text-slate-500" x-text="entry.message || ''"></span></td>
+                    <td class="p-2"><button type="button" @click="activityExpandedId = activityExpandedId === entry.id ? null : entry.id" class="text-[10px] font-bold text-gold-400 hover:underline whitespace-nowrap" x-text="activityExpandedId === entry.id ? 'Hide' : 'Details'"></button></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+            <p x-show="activityLogLoaded && activityLog.length === 0" class="text-slate-500 text-xs italic text-center py-6">No activity matches these filters.</p>
           </div>
         </div>
 

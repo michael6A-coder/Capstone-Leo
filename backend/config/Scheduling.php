@@ -13,6 +13,9 @@
 class Scheduling
 {
     const DEFAULT_DURATION_MINUTES = 30;
+    // Shortest bookable service. Enforced when services are saved
+    // (backend/admin/saveService.php) so no service is too short to perform properly.
+    const MIN_SERVICE_MINUTES = 20;
     // How many concurrent appointments a branch can hold in the same
     // overlapping time window -- configured per branch (not one flat global
     // limit) so a smaller branch can be capped differently from a bigger
@@ -230,9 +233,11 @@ class Scheduling
             return true;
         }
 
+        // Any home service team they're on (home_service_staff), or lead.
         $sql = "SELECT preferred_time FROM home_service_requests
-                WHERE employee_id = ? AND preferred_date = ? AND status NOT IN ('Cancelled', 'Completed')";
-        $params = [$employeeId, $date];
+                WHERE (employee_id = ? OR EXISTS (SELECT 1 FROM home_service_staff t WHERE t.home_service_request_id = home_service_requests.id AND t.employee_id = ?))
+                  AND preferred_date = ? AND status NOT IN ('Cancelled', 'Completed')";
+        $params = [$employeeId, $employeeId, $date];
         if ($excludeRequestId !== null) {
             $sql .= ' AND id != ?';
             $params[] = $excludeRequestId;
@@ -252,7 +257,7 @@ class Scheduling
         return false;
     }
 
-    /** True if this specific staff member has any appointment overlapping this window. */
+    /** True if this specific staff member is busy with another client at any point in this window. */
     public static function staffHasConflict(
         PDO $pdo,
         int $employeeId,
@@ -260,22 +265,116 @@ class Scheduling
         int $durationMinutes,
         ?int $excludeAppointmentId = null
     ): bool {
-        return self::countOverlapping($pdo, null, $employeeId, $startDateTime, $durationMinutes, $excludeAppointmentId) > 0;
+        return self::staffConflictUntil($pdo, $employeeId, $startDateTime, $durationMinutes, $excludeAppointmentId) !== null;
     }
+
+    /**
+     * When this staff member is busy during the window, the end of the
+     * latest overlapping busy period (DateTime) -- i.e. "busy until"; null
+     * when they're free for the whole window.
+     */
+    public static function staffConflictUntil(
+        PDO $pdo,
+        int $employeeId,
+        string $startDateTime,
+        int $durationMinutes,
+        ?int $excludeAppointmentId = null
+    ): ?DateTime {
+        $newStart = new DateTime($startDateTime);
+        $newEnd = (clone $newStart)->modify("+{$durationMinutes} minutes");
+        $until = null;
+        foreach (self::staffBusyWindows($pdo, $employeeId, $newStart->format('Y-m-d'), $excludeAppointmentId) as $window) {
+            if ($window['start'] < $newEnd && $newStart < $window['end'] && ($until === null || $window['end'] > $until)) {
+                $until = $window['end'];
+            }
+        }
+        return $until;
+    }
+
+    /**
+     * Every period on $dateYmd this staff member is with a client. A booking
+     * with several services runs them back-to-back in booking order
+     * (appointment_services.id); each service is done by its own stylist
+     * (appointment_services.employee_id) or, when that's NULL, by the
+     * booking's main stylist (appointments.employee_id). So a stylist is only
+     * busy for their own services' part of a shared booking. Locking read
+     * (FOR UPDATE) like countOverlapping() -- call within a transaction when
+     * the result guards an insert/update.
+     *
+     * @return array<int, array{start: DateTime, end: DateTime, appointment_id: int}>
+     */
+    public static function staffBusyWindows(PDO $pdo, int $employeeId, string $dateYmd, ?int $excludeAppointmentId = null): array
+    {
+        $sql = "SELECT a.id, a.appointment_datetime, a.employee_id FROM appointments a
+                WHERE a.status != 'Cancelled' AND DATE(a.appointment_datetime) = ?
+                  AND (a.employee_id = ? OR EXISTS (SELECT 1 FROM appointment_services x WHERE x.appointment_id = a.id AND x.employee_id = ?))";
+        $params = [$dateYmd, $employeeId, $employeeId];
+        if ($excludeAppointmentId !== null) {
+            $sql .= ' AND a.id != ?';
+            $params[] = $excludeAppointmentId;
+        }
+        $stmt = $pdo->prepare($sql . ' FOR UPDATE');
+        $stmt->execute($params);
+        $appointments = $stmt->fetchAll();
+        if (!$appointments) return [];
+
+        $ids = array_column($appointments, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("
+            SELECT aps.appointment_id, aps.employee_id, s.duration_minutes
+            FROM appointment_services aps JOIN services s ON s.id = aps.service_id
+            WHERE aps.appointment_id IN ($placeholders)
+            ORDER BY aps.appointment_id, aps.id
+        ");
+        $stmt->execute($ids);
+        $servicesByAppointment = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $servicesByAppointment[$row['appointment_id']][] = $row;
+        }
+
+        $windows = [];
+        foreach ($appointments as $appointment) {
+            $cursor = new DateTime($appointment['appointment_datetime']);
+            $rows = $servicesByAppointment[$appointment['id']] ?? [];
+            if (!$rows) {
+                // No service rows: the whole default-length booking is the main stylist's.
+                if ((int) $appointment['employee_id'] === $employeeId) {
+                    $windows[] = ['start' => clone $cursor, 'end' => (clone $cursor)->modify('+' . self::DEFAULT_DURATION_MINUTES . ' minutes'), 'appointment_id' => (int) $appointment['id']];
+                }
+                continue;
+            }
+            foreach ($rows as $row) {
+                $minutes = (int) $row['duration_minutes'] > 0 ? (int) $row['duration_minutes'] : self::DEFAULT_DURATION_MINUTES;
+                $end = (clone $cursor)->modify("+{$minutes} minutes");
+                $doneBy = $row['employee_id'] !== null ? (int) $row['employee_id'] : (int) $appointment['employee_id'];
+                if ($doneBy === $employeeId) {
+                    $windows[] = ['start' => clone $cursor, 'end' => $end, 'appointment_id' => (int) $appointment['id']];
+                }
+                $cursor = $end;
+            }
+        }
+        return $windows;
+    }
+
+    /** attendance.notes markers -- shown to staff/cashier/admin so auto-closed hours can be reviewed. */
+    const NOTE_AUTO_CLOSE = 'Auto clock-out at closing time — staff did not sign out';
+    const NOTE_EOD_CLOSE = 'Clocked out at end-of-day close — staff did not sign out';
 
     /**
      * Automatic attendance Time Out. There's no cron/background worker in
      * this project, and browser-close events are unreliable (tab killed,
      * laptop closed, crash), so this closes any open attendance row for the
-     * employee the moment it's next checked (every staff dashboard load and
-     * login) if the branch's shift hours for that work day have ended --
-     * unless the employee still has real work in progress, in which case
-     * their shift is left open rather than force-closed.
+     * employee the moment it's next checked if the branch's closing time
+     * for that work day has passed. It runs for one employee on their own
+     * login/dashboard load, and for the whole branch via
+     * autoCloseBranchAttendance() whenever the public roster, the cashier
+     * dashboard, or end-of-day close loads -- so a forgotten sign-out never
+     * leaves someone "Available" after closing.
      *
-     * No per-employee shift-schedule table exists in this project, so the
-     * assigned branch's closing time (self::BRANCH_HOURS) is always the
-     * fallback used. "Approved overtime" has no backing feature/table here
-     * either, so it isn't checked -- only real in-progress work does.
+     * The clock-out is recorded at the branch's closing time (not "now") and
+     * tagged NOTE_AUTO_CLOSE so an admin can correct the hours. A stylist
+     * still mid-service today is left open; a shift from a previous day is
+     * always closed, even if a booking was left In Progress.
      */
     public static function autoCloseAttendance(PDO $pdo, int $employeeId, ?int $branchId): void
     {
@@ -284,7 +383,7 @@ class Scheduling
         }
 
         $stmt = $pdo->prepare("
-            SELECT id, clock_in_time, DATE(clock_in_time) AS work_date
+            SELECT id, clock_in_time, DATE(clock_in_time) AS work_date, DATE(clock_in_time) = CURDATE() AS is_today
             FROM attendance
             WHERE employee_id = ? AND clock_out_time IS NULL
         ");
@@ -300,16 +399,20 @@ class Scheduling
         if (!$branchKey) {
             return;
         }
-        [, $closingTime] = self::operatingHours($branchKey);
 
         foreach ($openRows as $row) {
+            [, $closingTime] = self::operatingHours($branchKey, $row['work_date']);
             $shiftEnd = $row['work_date'] . ' ' . $closingTime;
 
-            // A staff member who clocks in after the branch's closing time
-            // has already passed (e.g. logging in late) would otherwise get
-            // a clock_out_time earlier than their own clock_in_time --
-            // leave those open rather than record negative hours worked.
+            // Clocked in after closing (e.g. logging in late): closing time
+            // would be earlier than the clock-in, so close it at the
+            // clock-in instead of recording negative hours -- but only once
+            // the day is over; today it stays open.
             if ($shiftEnd <= $row['clock_in_time']) {
+                if (!(int) $row['is_today']) {
+                    $pdo->prepare('UPDATE attendance SET clock_out_time = clock_in_time, notes = ? WHERE id = ?')
+                        ->execute([self::NOTE_AUTO_CLOSE, $row['id']]);
+                }
                 continue;
             }
 
@@ -323,20 +426,57 @@ class Scheduling
                 continue; // Branch hours haven't ended yet for this work day -- stays On Shift.
             }
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE employee_id = ? AND status = 'In Progress'");
-            $stmt->execute([$employeeId]);
-            $hasActiveAppointment = (int) $stmt->fetchColumn() > 0;
+            if ((int) $row['is_today']) {
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM appointments WHERE employee_id = ? AND status = 'In Progress' AND DATE(appointment_datetime) = CURDATE()");
+                $stmt->execute([$employeeId]);
+                $hasActiveAppointment = (int) $stmt->fetchColumn() > 0;
 
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM home_service_requests WHERE employee_id = ? AND status = 'Confirmed'");
-            $stmt->execute([$employeeId]);
-            $hasActiveHomeService = (int) $stmt->fetchColumn() > 0;
+                $stmt = $pdo->prepare("SELECT COUNT(*) FROM home_service_requests WHERE employee_id = ? AND status = 'Confirmed'");
+                $stmt->execute([$employeeId]);
+                $hasActiveHomeService = (int) $stmt->fetchColumn() > 0;
 
-            if ($hasActiveAppointment || $hasActiveHomeService) {
-                continue; // Real work still open -- don't force Off Shift.
+                if ($hasActiveAppointment || $hasActiveHomeService) {
+                    continue; // Real work still open tonight -- don't force Off Shift yet.
+                }
             }
 
-            $pdo->prepare('UPDATE attendance SET clock_out_time = ? WHERE id = ?')
-                ->execute([$shiftEnd, $row['id']]);
+            $pdo->prepare('UPDATE attendance SET clock_out_time = ?, notes = ? WHERE id = ?')
+                ->execute([$shiftEnd, self::NOTE_AUTO_CLOSE, $row['id']]);
         }
+    }
+
+    /** Runs autoCloseAttendance() for every staff member of a branch who still has an open shift. */
+    public static function autoCloseBranchAttendance(PDO $pdo, int $branchId): void
+    {
+        $stmt = $pdo->prepare('
+            SELECT DISTINCT a.employee_id FROM attendance a
+            JOIN employees e ON e.id = a.employee_id
+            WHERE e.branch_id = ? AND a.clock_out_time IS NULL
+        ');
+        $stmt->execute([$branchId]);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $employeeId) {
+            self::autoCloseAttendance($pdo, (int) $employeeId, $branchId);
+        }
+    }
+
+    /**
+     * End-of-day: clocks out everyone at the branch who is still on shift,
+     * at the moment the day is closed. Returns the names clocked out.
+     */
+    public static function clockOutBranchAtEod(PDO $pdo, int $branchId): array
+    {
+        $stmt = $pdo->prepare("
+            SELECT a.id, CONCAT(e.first_name, ' ', e.last_name) AS name
+            FROM attendance a
+            JOIN employees e ON e.id = a.employee_id
+            WHERE e.branch_id = ? AND a.clock_out_time IS NULL AND a.clock_in_time <= NOW()
+        ");
+        $stmt->execute([$branchId]);
+        $rows = $stmt->fetchAll();
+        $update = $pdo->prepare('UPDATE attendance SET clock_out_time = NOW(), notes = ? WHERE id = ?');
+        foreach ($rows as $row) {
+            $update->execute([self::NOTE_EOD_CLOSE, $row['id']]);
+        }
+        return array_column($rows, 'name');
     }
 }

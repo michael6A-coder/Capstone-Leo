@@ -71,7 +71,7 @@
 
       <div>
         <div class="p-4 border-t border-slate-800">
-          <a href="../login/login.html" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
+          <a href="../../backend/auth/logout.php" class="w-full text-left flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-xs transition duration-150 text-rose-400 hover:bg-rose-900/50 hover:text-rose-300">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4"></path></svg>
             <span>Sign Out</span>
           </a>
@@ -180,7 +180,7 @@
                   <th class="p-3">Branches Visited</th>
                   <th class="p-3 text-center">Visits</th>
                   <th class="p-3 text-center">Loyalty Pts</th>
-                  <th class="p-3 text-center">Score</th>
+                  <th class="p-3 text-center" title="Based on completed visits in the last 12 months">Loyalty Tier</th>
                   <th class="p-3 text-right">Lifetime Spend</th>
                   <th class="p-3">Last Visit</th>
                   <th class="p-3 text-right">Actions</th>
@@ -206,7 +206,7 @@
                     <td class="p-3 text-center font-bold text-indigo-400" x-text="customer.visits"></td>
                     <td class="p-3 text-center font-bold text-gold-400" x-text="customer.loyaltyPoints"></td>
                     <td class="p-3 text-center">
-                      <span :class="$store.admin.getCustomerScoreBadgeClass(customer.loyaltyPoints)" class="px-2.5 py-0.5 rounded text-[10px] font-bold" x-text="$store.admin.getCustomerScoreTier(customer.loyaltyPoints)"></span>
+                      <span :class="$store.admin.getCustomerTierBadgeClass(customer.loyaltyTier)" class="px-2.5 py-0.5 rounded text-[10px] font-bold" x-text="customer.loyaltyTier" :title="customer.recentVisits + ' completed visit(s) in the last 12 months'"></span>
                     </td>
                     <td class="p-3 text-right font-bold text-emerald-400" x-text="$store.admin.formatCurrency(customer.totalSpent)"></td>
                     <td class="p-3" x-text="customer.lastVisit"></td>

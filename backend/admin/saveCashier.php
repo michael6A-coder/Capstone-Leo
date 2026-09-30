@@ -7,15 +7,21 @@
  * branch via users.branch_id -- unlike staff they have no `employees` row,
  * since a cashier is a front-desk login rather than a roster member tracked
  * for attendance/performance. Editing only touches name/branch; email is
- * fixed after creation. Creating a new cashier needs a login account, so a
- * temp password is generated and handed back once so the admin can relay it.
+ * fixed after creation. Creating a new cashier needs a login account, so
+ * it starts with an unusable random password and an emailed setup link
+ * (see AccountSetup.php) instead of a temp password relayed by the admin.
  */
 
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
+require_once '../config/url.php';
+require_once '../config/mail.php';
+require_once '../config/AccountSetup.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -96,19 +102,20 @@ try {
         throw new Exception("Default 'Cashier' role not found in the database.");
     }
 
-    $tempPassword = bin2hex(random_bytes(4));
-    $hashed = password_hash($tempPassword, PASSWORD_DEFAULT);
+    $unusablePassword = password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT);
 
     $pdo->prepare('INSERT INTO users (role_id, branch_id, email, display_name, password) VALUES (?, ?, ?, ?, ?)')
-        ->execute([$roleId, $branchId, $email, $name, $hashed]);
+        ->execute([$roleId, $branchId, $email, $name, $unusablePassword]);
+    $newUserId = $pdo->lastInsertId();
 
     $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "STAFF", ?)')
         ->execute(["New cashier account added: {$name}."]);
 
+    AccountSetup::issueAndEmail($pdo, (int) $newUserId, $email, $name, 'Cashier');
+
     echo json_encode([
         'success' => true,
-        'message' => 'Cashier account created.',
-        'tempPassword' => $tempPassword,
+        'message' => "Cashier account created. An account setup email has been sent to {$email}.",
     ]);
 } catch (PDOException $e) {
     http_response_code(500);

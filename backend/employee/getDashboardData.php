@@ -95,17 +95,66 @@ try {
         JOIN customers c ON c.id = a.customer_id
         LEFT JOIN appointment_services aps ON aps.appointment_id = a.id
         LEFT JOIN services s ON s.id = aps.service_id
-        WHERE a.employee_id = ?
+        WHERE a.employee_id = ? OR EXISTS (SELECT 1 FROM appointment_services mine WHERE mine.appointment_id = a.id AND mine.employee_id = ?)
         GROUP BY a.id
         ORDER BY a.appointment_datetime DESC
     ");
-    $stmt->execute([$employeeId]);
-    $appointments = array_map(function ($row) {
+    $stmt->execute([$employeeId, $employeeId]);
+    // Per-service stylists: services run back-to-back in booking order, each
+    // by its own stylist (appointment_services.employee_id, NULL = the
+    // booking's main stylist). Show this staff member only their part --
+    // their services and their own time window -- plus who else is on it.
+    $serviceRowsStmt = $pdo->prepare("
+        SELECT aps.employee_id, a.employee_id AS main_id, s.service_name, s.duration_minutes,
+               CONCAT(e.first_name, ' ', e.last_name) AS stylist
+        FROM appointment_services aps
+        JOIN appointments a ON a.id = aps.appointment_id
+        JOIN services s ON s.id = aps.service_id
+        LEFT JOIN employees e ON e.id = COALESCE(aps.employee_id, a.employee_id)
+        WHERE a.reference_code = ?
+        ORDER BY aps.id
+    ");
+    $appointments = array_map(function ($row) use ($serviceRowsStmt, $employeeId) {
         $row['price'] = (float) $row['price'];
         $row['durationMinutes'] = (int) $row['durationMinutes'];
-        $endTime = new DateTime($row['startDateTime']);
-        $endTime->modify('+' . $row['durationMinutes'] . ' minutes');
+        $start = new DateTime($row['startDateTime']);
+        $endTime = (clone $start)->modify('+' . $row['durationMinutes'] . ' minutes');
         $row['endTime'] = $endTime->format('h:i A');
+        $row['isMainStylist'] = true;
+        $row['otherStylists'] = '';
+
+        $serviceRowsStmt->execute([$row['id']]);
+        $parts = $serviceRowsStmt->fetchAll();
+        if ($parts) {
+            $mainId = (int) $parts[0]['main_id'];
+            $row['isMainStylist'] = $mainId === $employeeId;
+            $cursor = clone $start;
+            $mine = [];
+            $myStart = null;
+            $myEnd = null;
+            $others = [];
+            foreach ($parts as $part) {
+                $minutes = (int) $part['duration_minutes'] > 0 ? (int) $part['duration_minutes'] : 30;
+                $segmentEnd = (clone $cursor)->modify("+{$minutes} minutes");
+                $doneBy = $part['employee_id'] !== null ? (int) $part['employee_id'] : $mainId;
+                if ($doneBy === $employeeId) {
+                    $mine[] = $part['service_name'];
+                    $myStart = $myStart ?? clone $cursor;
+                    $myEnd = $segmentEnd;
+                } elseif ($part['stylist']) {
+                    $others[$part['stylist']] = true;
+                }
+                $cursor = $segmentEnd;
+            }
+            if ($mine && count($mine) < count($parts)) {
+                // Shared booking: narrow to this stylist's own services and window.
+                $row['serviceName'] = implode(', ', $mine);
+                $row['time'] = $myStart->format('h:i A');
+                $row['endTime'] = $myEnd->format('h:i A');
+                $row['durationMinutes'] = (int) (($myEnd->getTimestamp() - $myStart->getTimestamp()) / 60);
+            }
+            $row['otherStylists'] = implode(', ', array_keys($others));
+        }
         unset($row['startDateTime']);
         return $row;
     }, $stmt->fetchAll());
@@ -116,7 +165,8 @@ try {
             DATE_FORMAT(clock_in_time, '%Y-%m-%d') AS date,
             DATE_FORMAT(clock_in_time, '%h:%i %p') AS clockIn,
             clock_out_time,
-            DATE_FORMAT(clock_out_time, '%h:%i %p') AS clockOut
+            DATE_FORMAT(clock_out_time, '%h:%i %p') AS clockOut,
+            notes
         FROM attendance
         WHERE employee_id = ?
         ORDER BY clock_in_time DESC
@@ -243,7 +293,7 @@ try {
         $stmt = $pdo->prepare("
             SELECT id, product_name AS name, sku, type, quantity_on_hand AS stock, reorder_level AS minQty
             FROM inventory
-            WHERE branch_id = ?
+            WHERE branch_id = ? AND is_active = 1
             ORDER BY product_name ASC
         ");
         $stmt->execute([$branchId]);

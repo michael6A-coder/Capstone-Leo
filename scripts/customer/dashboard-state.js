@@ -33,6 +33,7 @@ function customerDashboardState() {
       phone: '',
       memberSince: '',
       loyaltyPoints: 0,
+      loyaltyTier: { tier: 'Member', visits: 0, windowMonths: 12, nextTier: 'Silver', visitsToNext: 3, ladder: [] },
       profilePicture: '',
       notificationPrefs: {
         email: true,
@@ -56,7 +57,7 @@ function customerDashboardState() {
     staffList: [],
 
     selectedServicesForBooking: [],
-    bookingForm: { customerName: '', customerPhone: '', date: getLocalISODate(), time: '', staffId: '', branch: '', paymentMethod: '', depositReference: '', useLoyaltyPoints: false, agreedToTerms: false },
+    bookingForm: { customerName: '', customerPhone: '', date: getLocalISODate(), time: '', staffId: '', branch: '', paymentMethod: '', paymentPlan: 'deposit', depositReference: '', useLoyaltyPoints: false, agreedToTerms: false },
     // Booking wizard step, in customer-facing order: schedule -> stylist ->
     // review -> payment -> notifications -> terms. Schedule always comes
     // before payment so the customer validates an available slot first.

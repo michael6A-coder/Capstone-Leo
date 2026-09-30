@@ -16,10 +16,12 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/RateLimiter.php';
 require_once '../config/Scheduling.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 
 header('Content-Type: application/json');
 
@@ -99,17 +101,6 @@ try {
         exit();
     }
 
-    // The Team Sign-in page (mode=team-email) posts here too, but it's for
-    // staff/cashier/admin only -- a Customer account must not get in through
-    // it even though the credentials are valid.
-    $isPortalRequest = ($_POST['portal'] ?? '') === '1';
-    if ($isPortalRequest && $user['role_name'] === 'Customer') {
-        $login_limiter->record();
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'This sign-in is for staff accounts only. Please use the customer login page.']);
-        exit();
-    }
-
     // Block login until the account's email OTP has been verified
     // (see backend/auth/verifyOtp.php). Staff/admin-created accounts are
     // inserted with is_active = 1 by default, so this only affects
@@ -160,16 +151,6 @@ try {
     $fullName = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
     $_SESSION['user_name'] = $fullName !== '' ? $fullName : ($user['display_name'] ?? '');
     $_SESSION['branch_id'] = $user['branch_id'] !== null ? (int) $user['branch_id'] : null;
-
-    if ($user['role_name'] === 'Supplier') {
-        $stmt = $pdo->prepare('SELECT id FROM suppliers WHERE user_id = ? LIMIT 1');
-        $stmt->execute([$user['id']]);
-        $supplierId = $stmt->fetchColumn();
-        if ($supplierId) {
-            $pdo->prepare('INSERT INTO supplier_action_log (supplier_id, action, details) VALUES (?, "login", ?)')
-                ->execute([$supplierId, 'Logged in from ' . RateLimiter::getIpAddress()]);
-        }
-    }
 
     // The frontend expects a redirect URL, relative to pages/login/login.html
     // (that's the page the browser is on when it follows this redirect).

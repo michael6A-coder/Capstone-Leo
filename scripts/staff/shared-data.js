@@ -219,13 +219,18 @@ document.addEventListener('alpine:init', () => {
 
     getStatusBadgeClass(status) {
       switch (status) {
-        case 'Pending': return 'bg-amber-950 text-amber-300 border border-amber-900/50';
-        case 'Confirmed': return 'bg-sky-950 text-sky-300 border border-sky-900/50';
-        case 'In Progress': return 'bg-teal-950 text-teal-300 border border-teal-900/50';
-        case 'Completed': return 'bg-emerald-950 text-emerald-300 border border-emerald-900/50';
-        case 'Reviewed': return 'bg-violet-950 text-violet-300 border border-violet-900/50';
-        case 'Cancelled': case 'No-Show': return 'bg-rose-950 text-rose-300 border border-rose-900/50';
-        default: return 'bg-slate-800 text-slate-300 border border-slate-700';
+        // Light chips with dark text -- the staff theme paints cards cream,
+        // so the old *-950 backgrounds rendered as dark blocks with
+        // unreadable text. Arbitrary hex values dodge staff-theme.css's
+        // emerald/slate remaps so each status keeps its own colour.
+        case 'Pending': return 'bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D]';
+        case 'Confirmed': return 'bg-[#E0F2FE] text-[#075985] border border-[#7DD3FC]';
+        case 'In Progress': return 'bg-[#CCFBF1] text-[#115E59] border border-[#5EEAD4]';
+        case 'Completed': return 'bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]';
+        case 'Reviewed': return 'bg-[#EDE9FE] text-[#5B21B6] border border-[#C4B5FD]';
+        case 'Reschedule Requested': return 'bg-[#FFEDD5] text-[#9A3412] border border-[#FDBA74]';
+        case 'Cancelled': case 'No-Show': return 'bg-[#FFE4E6] text-[#9F1239] border border-[#FDA4AF]';
+        default: return 'bg-[#F1F5F9] text-[#334155] border border-[#CBD5E1]';
       }
     },
 

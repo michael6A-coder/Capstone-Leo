@@ -3,8 +3,10 @@ require_once '../config/cors.php';
 require_once '../config/url.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 
 // config/session.php already started the session (with the project's real
 // save path/cookie settings) -- a plain session_start() here previously read

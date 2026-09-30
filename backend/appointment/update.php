@@ -59,7 +59,7 @@ try {
     }
     $employeeId = (int) $employee['id'];
 
-    $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, status FROM appointments WHERE reference_code = ?');
+    $stmt = $pdo->prepare('SELECT id, customer_id, employee_id, status, DATE(appointment_datetime) > CURDATE() AS is_future FROM appointments WHERE reference_code = ?');
     $stmt->execute([$referenceCode]);
     $appointment = $stmt->fetch();
 
@@ -78,6 +78,14 @@ try {
     if (!in_array($appointment['status'], $allowedTransitions[$status], true)) {
         http_response_code(409);
         echo json_encode(['success' => false, 'message' => "Booking can't move from \"{$appointment['status']}\" to \"{$status}\"."]);
+        exit();
+    }
+
+    // A service can only start on its appointment day -- starting a future
+    // booking early made the stylist show "With a client" days ahead.
+    if ($status === 'In Progress' && (int) $appointment['is_future']) {
+        http_response_code(409);
+        echo json_encode(['success' => false, 'message' => 'This appointment is on a later date -- you can start it on the day itself.']);
         exit();
     }
 

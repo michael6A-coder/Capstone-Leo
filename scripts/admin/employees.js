@@ -35,6 +35,13 @@ function adminStaffApp() {
       return !/stock\s*clerk|inventory\s*clerk/i.test(staff.role || '');
     },
 
+    getAverageStaffRating() {
+      const store = Alpine.store('admin');
+      const rated = store.staffList.filter(s => s.rating > 0);
+      if (rated.length === 0) return '—';
+      return (rated.reduce((sum, s) => sum + s.rating, 0) / rated.length).toFixed(1);
+    },
+
     getStaffStatusLabel(status) {
       const labels = { 'On Duty': 'Available', 'With Client': 'Busy', 'Off Shift': 'Off Shift' };
       return labels[status] || status;
@@ -133,9 +140,6 @@ function adminStaffApp() {
       if (!result.success) {
         alert(result.message || 'Failed to save staff member.');
         return;
-      }
-      if (result.tempPassword) {
-        alert('Staff account created. Temporary password: ' + result.tempPassword + '\nShare this with them securely — it will not be shown again.');
       }
       await store.refresh();
       this.openStaffModal = false;

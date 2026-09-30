@@ -13,9 +13,11 @@
 
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/RateLimiter.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -39,13 +41,15 @@ if ($feedback_limiter->isExceeded()) {
 
 $reference = strtoupper(trim($_POST['reference'] ?? ''));
 $phone = trim($_POST['phone'] ?? '');
+// Home services are verified with the request's email (see trackBooking.php).
+$email = trim($_POST['email'] ?? '');
 $rating = (int) ($_POST['rating'] ?? 0);
 $staffRating = (int) ($_POST['staff_rating'] ?? 0);
 $comment = trim($_POST['comment'] ?? '');
 
-if ($reference === '' || $phone === '') {
+if ($reference === '' || ($phone === '' && $email === '')) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'A booking reference and mobile number are required.']);
+    echo json_encode(['success' => false, 'message' => 'A booking reference and mobile number (or email for home services) are required.']);
     exit();
 }
 if ($rating < 1 || $rating > 5) {
@@ -88,10 +92,11 @@ try {
     $stmt = $pdo->prepare("
         SELECT h.id, h.customer_id FROM home_service_requests h
         JOIN customers c ON c.id = h.customer_id
-        WHERE h.reference_code = ? AND c.phone_number = ? AND h.status = 'Completed'
+        WHERE h.reference_code = ? AND h.status = 'Completed'
+          AND ((? <> '' AND LOWER(h.contact_email) = LOWER(?)) OR (? <> '' AND c.phone_number = ?))
         LIMIT 1
     ");
-    $stmt->execute([$reference, $phone]);
+    $stmt->execute([$reference, $email, $email, $phone, $phone]);
     $hs = $stmt->fetch();
 
     if ($hs) {

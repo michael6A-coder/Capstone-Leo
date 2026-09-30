@@ -19,6 +19,7 @@
 require_once '../config/cors.php';
 require_once '../config/database.php';
 require_once '../config/Scheduling.php';
+require_once '../config/PayMongo.php';
 
 sendCorsHeaders();
 header('Content-Type: application/json');
@@ -40,6 +41,7 @@ if (($branchId <= 0 && $branchKey === '') || $date === '') {
 
 try {
     $pdo = Database::getInstance();
+    PayMongo::releaseExpiredHolds($pdo); // Free slots held by abandoned online payments.
 
     if ($branchId <= 0 && $branchKey !== '') {
         $stmt = $pdo->prepare('SELECT id, branch_key FROM branches WHERE branch_key = ? LIMIT 1');

@@ -3,10 +3,12 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/Scheduling.php';
 require_once '../config/StaffNotifier.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || !in_array($_SESSION['user_role'] ?? '', ['Admin'], true)) {
@@ -23,6 +25,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $referenceCode = trim($_POST['id'] ?? '');
 $staffId = (int) ($_POST['staffId'] ?? 0);
+// Home service teams: staffIds[] (several stylists). A single staffId still works.
+$staffIds = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['staffIds'] ?? [])))));
+if (!$staffIds && $staffId > 0) $staffIds = [$staffId];
+if ($staffId <= 0 && $staffIds) $staffId = $staffIds[0];
 
 if ($referenceCode === '' || $staffId <= 0) {
     http_response_code(400);
@@ -40,19 +46,29 @@ try {
     if ($homeService !== false) {
         $homeServiceId = $homeService['id'];
 
-        $stmt = $pdo->prepare('SELECT id, first_name, last_name FROM employees WHERE id = ? AND is_active = 1');
-        $stmt->execute([$staffId]);
-        $staff = $stmt->fetch();
-        if (!$staff) {
+        // A home service can have a whole team (home_service_staff); the
+        // first stylist picked is the team lead (home_service_requests.employee_id).
+        $placeholders = implode(',', array_fill(0, count($staffIds), '?'));
+        $stmt = $pdo->prepare("SELECT id, first_name, last_name FROM employees WHERE id IN ($placeholders) AND is_active = 1");
+        $stmt->execute($staffIds);
+        $staffById = [];
+        foreach ($stmt->fetchAll() as $row) $staffById[(int) $row['id']] = trim($row['first_name'] . ' ' . $row['last_name']);
+        if (count($staffById) !== count($staffIds)) {
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Selected staff member is not available.']);
+            echo json_encode(['success' => false, 'message' => 'One or more selected staff members are not available.']);
             exit();
         }
 
         $preferredTime = $homeService['preferred_time'] ?: '09:00:00';
-        if (Scheduling::homeServiceStaffHasConflict($pdo, $staffId, $homeService['preferred_date'], $preferredTime, $homeServiceId)) {
+        $busy = [];
+        foreach ($staffIds as $id) {
+            if (Scheduling::homeServiceStaffHasConflict($pdo, $id, $homeService['preferred_date'], $preferredTime, $homeServiceId)) {
+                $busy[] = $staffById[$id];
+            }
+        }
+        if ($busy) {
             http_response_code(409);
-            echo json_encode(['success' => false, 'message' => 'This staff member already has an overlapping booking (in-salon or home service) around this date and time.']);
+            echo json_encode(['success' => false, 'message' => implode(', ', $busy) . (count($busy) === 1 ? ' already has' : ' already have') . ' an overlapping booking (in-salon or home service) around this date and time. Unselect them or pick others.']);
             exit();
         }
 
@@ -62,15 +78,32 @@ try {
         // current status; staff can be pre-assigned without forcing the flow.
         $nextStatus = $homeService['status'] === 'Confirmed' ? 'Staff Assigned' : $homeService['status'];
 
+        $stmt = $pdo->prepare('SELECT employee_id FROM home_service_staff WHERE home_service_request_id = ?');
+        $stmt->execute([$homeServiceId]);
+        $previousTeam = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM home_service_staff WHERE home_service_request_id = ?')->execute([$homeServiceId]);
+        $add = $pdo->prepare('INSERT INTO home_service_staff (home_service_request_id, employee_id) VALUES (?, ?)');
+        foreach ($staffIds as $id) $add->execute([$homeServiceId, $id]);
         $pdo->prepare('UPDATE home_service_requests SET employee_id = ?, status = ? WHERE id = ?')
-            ->execute([$staffId, $nextStatus, $homeServiceId]);
+            ->execute([$staffIds[0], $nextStatus, $homeServiceId]);
 
-        $staffName = trim($staff['first_name'] . ' ' . $staff['last_name']);
+        $teamNames = implode(', ', array_map(fn($id) => $staffById[$id], $staffIds));
         $pdo->prepare('INSERT INTO notifications (user_id, type, message) VALUES (NULL, "BOOKING", ?)')
-            ->execute(["{$staffName} assigned to home service request {$referenceCode}."]);
-        StaffNotifier::notify($pdo, $staffId, 'HOME_SERVICE_ASSIGNED', "You've been assigned to home service request {$referenceCode}.");
+            ->execute(["Team for home service request {$referenceCode}: {$teamNames}."]);
+        foreach ($staffIds as $id) {
+            if (!in_array($id, $previousTeam, true)) {
+                StaffNotifier::notify($pdo, $id, 'HOME_SERVICE_ASSIGNED', "You've been assigned to home service request {$referenceCode} on "
+                    . date('M j, Y', strtotime($homeService['preferred_date'])) . ' (team: ' . $teamNames . ').');
+            }
+        }
+        foreach (array_diff($previousTeam, $staffIds) as $removedId) {
+            StaffNotifier::notify($pdo, (int) $removedId, 'HOME_SERVICE_UNASSIGNED', "You've been removed from home service request {$referenceCode}.");
+        }
+        $pdo->commit();
 
-        echo json_encode(['success' => true, 'message' => 'Staff assigned.']);
+        echo json_encode(['success' => true, 'message' => count($staffIds) === 1 ? 'Staff assigned.' : count($staffIds) . ' staff assigned: ' . $teamNames . '.']);
         exit();
     }
 

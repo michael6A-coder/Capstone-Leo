@@ -23,6 +23,7 @@ async function init() {
   CashierApp.initChrome();
   wireStaticEvents();
   selectPaymentMethod('Cash');
+  setTip(0);
 
   const ref = getReferenceFromUrl();
   const result = await CashierApp.fetchDashboard();
@@ -33,10 +34,12 @@ async function init() {
   }
   state.data = result;
   CashierApp.applyBranchChrome(result.myBranch.key);
+  CashierApp.updateQueueBadge(result.bookings);
 
   if (!ref) {
     document.getElementById('verifyListSection').classList.remove('hidden');
     document.getElementById('ticketTerminal').classList.add('hidden');
+    renderCheckoutList();
     renderVerifyList();
     return;
   }
@@ -67,45 +70,93 @@ async function init() {
   renderCart();
 }
 
+/* READY FOR CHECKOUT -- visits that still owe money: anything In Progress
+   or Completed-but-unpaid, plus Confirmed bookings dated today or earlier
+   (future Confirmed bookings aren't at the counter yet). */
+function renderCheckoutList() {
+  const tbody = document.getElementById('checkoutTableBody');
+  const now = new Date();
+  const today = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+  const toCheckout = state.data.bookings.filter(b =>
+    b.paymentStatus !== 'Fully Paid' && (
+      b.status === 'In Progress' ||
+      b.status === 'Completed' ||
+      (b.status === 'Confirmed' && (b.date || '') <= today)
+    )
+  );
+
+  if (!toCheckout.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="py-14 text-center">
+      <i class="fa-solid fa-cash-register text-3xl text-gray-200 mb-2 block"></i>
+      <span class="text-sm text-gray-400">No visits waiting for checkout.</span>
+    </td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = toCheckout.map(b => `
+    <tr class="align-top">
+      <td class="px-5 py-3.5">
+        <span class="font-mono text-xs font-semibold text-slate-700">${escapeHtml(b.id)}</span>
+        <span class="block text-xs text-slate-400">${escapeHtml(b.date || '')} ${escapeHtml(b.time || '')}</span>
+      </td>
+      <td class="px-5 py-3.5 font-semibold text-slate-800 capitalize">${escapeHtml(b.clientName)}</td>
+      <td class="px-5 py-3.5">${escapeHtml(b.serviceName || '—')}</td>
+      <td class="px-5 py-3.5 capitalize">${escapeHtml(b.staffName || '—')}</td>
+      <td class="px-5 py-3.5"><span class="text-[10px] font-bold px-2 py-0.5 rounded ${statusBadgeClass(b.status)}">${escapeHtml(b.status)}</span></td>
+      <td class="px-5 py-3.5 text-right font-bold text-slate-800 whitespace-nowrap">${CashierApp.formatCurrency(b.price)}</td>
+      <td class="px-5 py-3.5 text-right"><a href="payment.html?ref=${encodeURIComponent(b.id)}" class="inline-block bg-amber-500 hover:bg-amber-600 text-slate-950 px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">Checkout</a></td>
+    </tr>`).join('');
+}
+
 /* PAYMENTS TO VERIFY -- self-reported deposits/reservation payments on
    Pending bookings, awaiting a cashier's manual verification. Customers
    never verify their own payment -- this list and its actions are
    cashier/admin-only (see backend/cashier/updateStatus.php's role check). */
 function renderVerifyList() {
   const tbody = document.getElementById('verifyTableBody');
+  // Any active booking with an unverified self-reported payment -- not just
+  // Pending ones, so e.g. a Reschedule Requested booking's deposit still shows.
   const toVerify = state.data.bookings.filter(b =>
-    b.status === 'Pending' && (b.depositAmount || b.depositReference) && !b.depositVerified
+    !['Cancelled', 'Completed'].includes(b.status) && !b.depositVerified &&
+    (b.paymentStatus === 'Awaiting Verification' || (b.status === 'Pending' && (b.depositAmount || b.depositReference)))
   );
 
   if (!toVerify.length) {
-    tbody.innerHTML = `<tr><td colspan="11" class="py-12 text-center">
+    tbody.innerHTML = `<tr><td colspan="6" class="py-14 text-center">
       <i class="fa-solid fa-circle-check text-3xl text-gray-200 mb-2 block"></i>
-      <span class="text-xs text-gray-400 italic">No payments waiting on verification.</span>
+      <span class="text-sm text-gray-400">No payments waiting on verification.</span>
     </td></tr>`;
     return;
   }
 
-  tbody.innerHTML = toVerify.map(b => `
-    <tr class="hover:bg-amber-50/40 transition-colors duration-150">
-      <td class="p-2.5 font-mono text-[10px]">${escapeHtml(b.id)}</td>
-      <td class="p-2.5 font-semibold text-slate-800 capitalize">${escapeHtml(b.clientName)}</td>
-      <td class="p-2.5">${CashierApp.formatCurrency(b.price)}</td>
-      <td class="p-2.5">${escapeHtml(b.paymentRequirement || '—')}</td>
-      <td class="p-2.5">${b.requiredAmount ? CashierApp.formatCurrency(b.requiredAmount) : '—'}</td>
-      <td class="p-2.5">${b.depositAmount ? CashierApp.formatCurrency(b.depositAmount) : '—'}</td>
-      <td class="p-2.5">${escapeHtml(b.depositMethod && b.depositMethod !== 'Walk-in' ? b.depositMethod : (b.paymentMethod || '—'))}</td>
-      <td class="p-2.5">${escapeHtml(b.depositReference || '—')}</td>
-      <td class="p-2.5">${escapeHtml(b.submittedAt || '—')}</td>
-      <td class="p-2.5"><span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">${escapeHtml(b.paymentStatus || 'Awaiting Verification')}</span></td>
-      <td class="p-2.5"><button data-ref="${escapeHtml(b.id)}" class="btn-verify bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-[10px] font-bold shadow-sm hover:shadow-md">Verify Payment</button></td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = toVerify.map(b => {
+    const method = b.depositMethod && b.depositMethod !== 'Walk-in' ? b.depositMethod : (b.paymentMethod || '—');
+    return `
+    <tr class="align-top">
+      <td class="px-5 py-3.5">
+        <span class="font-mono text-xs font-semibold text-slate-700">${escapeHtml(b.id)}</span>
+        <span class="block text-xs text-slate-400">${escapeHtml(b.paymentRequirement || '')}</span>
+        ${b.status !== 'Pending' ? `<span class="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded ${statusBadgeClass(b.status)}">${escapeHtml(b.status)}</span>` : ''}
+      </td>
+      <td class="px-5 py-3.5 font-semibold text-slate-800 capitalize">${escapeHtml(b.clientName)}</td>
+      <td class="px-5 py-3.5 text-right whitespace-nowrap">
+        <span class="font-bold text-slate-800">${b.depositAmount ? CashierApp.formatCurrency(b.depositAmount) : '—'}</span>
+        <span class="block text-xs text-slate-400">of ${b.requiredAmount ? CashierApp.formatCurrency(b.requiredAmount) : CashierApp.formatCurrency(b.price)}</span>
+      </td>
+      <td class="px-5 py-3.5">
+        <span class="font-medium text-slate-700">${escapeHtml(method)}</span>
+        ${b.depositReference ? `<span class="block font-mono text-xs text-slate-400">${escapeHtml(b.depositReference)}</span>` : ''}
+      </td>
+      <td class="px-5 py-3.5 whitespace-nowrap text-slate-500">${escapeHtml(b.submittedAt || '—')}</td>
+      <td class="px-5 py-3.5 text-right"><button data-ref="${escapeHtml(b.id)}" class="btn-verify bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap">Verify</button></td>
+    </tr>`;
+  }).join('');
 }
 
 function openVerifyModal(ref) {
   state.pendingVerifyRef = ref;
   const booking = state.data.bookings.find(b => b.id === ref);
-  const allowedDepositMethods = ['Cash', 'GCash', 'Maya'];
+  const allowedDepositMethods = ['Cash', 'GCash', 'Maya', 'PayMongo'];
   document.getElementById('verifyAmountInput').value = booking ? (booking.depositAmount || booking.price) : '';
   document.getElementById('verifyMethodInput').value = booking && allowedDepositMethods.includes(booking.depositMethod) ? booking.depositMethod : '';
   CashierApp.showModal('verifyModal');
@@ -122,9 +173,13 @@ async function confirmVerify() {
     CashierApp.toast('An amount and payment method are required.', 'error');
     return;
   }
-  const result = await CashierApp.post('updateStatus.php', {
-    id: state.pendingVerifyRef, status: 'Confirmed', depositAmount: amount, depositMethod: method
-  });
+  // Pending bookings are confirmed by verifying; any other status (e.g.
+  // Reschedule Requested) only gets its payment recorded.
+  const booking = state.data.bookings.find(b => b.id === state.pendingVerifyRef);
+  const payload = booking && booking.status !== 'Pending'
+    ? { id: state.pendingVerifyRef, paymentAction: 'verify', depositAmount: amount, depositMethod: method }
+    : { id: state.pendingVerifyRef, status: 'Confirmed', depositAmount: amount, depositMethod: method };
+  const result = await CashierApp.post('updateStatus.php', payload);
   CashierApp.toast(result.message || (result.success ? 'Payment verified.' : 'Failed to verify payment.'), result.success ? 'success' : 'error');
   if (result.success) {
     CashierApp.hideModal('verifyModal');
@@ -147,13 +202,15 @@ async function markNeedsAttention() {
 function showNotFound() {
   document.getElementById('ticketNotFound').classList.remove('hidden');
   document.getElementById('ticketSummaryCard').classList.add('hidden');
-  document.getElementById('cartItemsContainer').innerHTML = '<p class="text-xs text-rose-500 text-center py-8 italic">No ticket loaded.</p>';
+  document.getElementById('paymentPanel').classList.add('hidden');
 }
 
 function renderTicketSummary(branch) {
   const t = state.ticket;
   document.getElementById('ticketSummaryCard').classList.remove('hidden');
-  document.getElementById('invoiceIdDisplay').textContent = t.id;
+  const refEl = document.getElementById('invoiceIdDisplay');
+  refEl.textContent = t.id;
+  refEl.classList.remove('hidden');
   document.getElementById('customerNameDisplay').textContent = t.clientName;
   document.getElementById('ticketClientName').textContent = t.clientName;
   document.getElementById('ticketClientPhone').textContent = t.clientPhone;
@@ -163,8 +220,8 @@ function renderTicketSummary(branch) {
   const servicesEl = document.getElementById('ticketServices');
   const serviceNames = (t.serviceName || '').split(',').map(s => s.trim()).filter(Boolean);
   servicesEl.innerHTML = serviceNames.length
-    ? serviceNames.map(name => `<span class="bg-white border border-amber-200 text-amber-800 text-[11px] font-semibold px-2.5 py-1 rounded-full">${escapeHtml(name)}</span>`).join('')
-    : '<span class="text-xs text-gray-400 italic">No services listed</span>';
+    ? serviceNames.map(name => `<span class="bg-[#006D6F]/10 text-[#06464A] text-sm font-semibold px-3 py-1 rounded-full">${escapeHtml(name)}</span>`).join('')
+    : '<span class="text-sm text-gray-400 italic">No services listed</span>';
 
   renderStatusUI();
 }
@@ -175,18 +232,25 @@ function renderStatusUI() {
   const t = state.ticket;
   const badge = document.getElementById('ticketStatusBadge');
   badge.textContent = t.status;
-  badge.className = `text-[10px] font-bold px-2 py-0.5 rounded ${statusBadgeClass(t.status)}`;
+  badge.className = `text-xs font-bold px-2.5 py-1 rounded-full ${statusBadgeClass(t.status)}`;
 
   const currentIndex = STATUS_STEPS.indexOf(t.status); // -1 while still Pending
 
+  // Numbered step circles: done = check, current = filled teal, upcoming = outline.
   document.querySelectorAll('.progress-seg').forEach((seg, i) => {
-    const fillClass = i < currentIndex ? 'bg-emerald-500' : i === currentIndex ? 'bg-amber-500' : 'bg-gray-200';
-    seg.className = `progress-seg h-1.5 rounded-full ${fillClass} transition-colors duration-300`;
+    const base = 'progress-seg w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-300';
+    if (i < currentIndex) {
+      seg.className = `${base} bg-emerald-600 text-white`;
+      seg.innerHTML = '<i class="fa-solid fa-check"></i>';
+    } else {
+      seg.className = `${base} ${i === currentIndex ? 'bg-[#006D6F] text-white' : 'bg-white border-2 border-gray-300 text-gray-400'}`;
+      seg.textContent = String(i + 1);
+    }
   });
 
   document.querySelectorAll('.progress-seg-label').forEach((label, i) => {
-    const textClass = i < currentIndex ? 'text-emerald-600' : i === currentIndex ? 'text-slate-900' : 'text-gray-400';
-    label.className = `progress-seg-label text-[9px] font-bold text-center transition-colors duration-300 ${textClass}`;
+    const textClass = i < currentIndex ? 'text-emerald-700' : i === currentIndex ? 'text-slate-900' : 'text-gray-400';
+    label.className = `progress-seg-label text-sm font-semibold transition-colors duration-300 ${textClass}`;
   });
 
   // "Start Service" only makes sense once a deposit has confirmed the
@@ -194,13 +258,16 @@ function renderStatusUI() {
   // progress (currentIndex 1). One button reflects whichever applies.
   const isCompleted = currentIndex === 2;
   const actionBtn = document.getElementById('btnWorkflowAction');
+  const btnBase = 'w-full font-bold py-2.5 px-3 rounded-xl text-sm flex items-center justify-center gap-2 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed';
   if (currentIndex === 1) {
-    actionBtn.className = 'w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-lg text-xs transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1.5';
-    actionBtn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i><span>Mark Completed</span>';
+    actionBtn.className = `${btnBase} bg-emerald-600 hover:bg-emerald-700 text-white`;
+    actionBtn.innerHTML = '<i class="fa-solid fa-flag-checkered"></i><span>Mark Service Completed</span>';
     actionBtn.disabled = false;
   } else {
-    actionBtn.className = 'w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2.5 px-3 rounded-lg text-xs transition-all disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed flex items-center justify-center gap-1.5';
-    actionBtn.innerHTML = '<i class="fa-solid fa-scissors"></i><span>Start Service</span>';
+    actionBtn.className = `${btnBase} bg-amber-500 hover:bg-amber-600 text-slate-950`;
+    actionBtn.innerHTML = currentIndex === 0
+      ? '<i class="fa-solid fa-scissors"></i><span>Start Service</span>'
+      : '<i class="fa-solid fa-lock"></i><span>Confirm the booking first (Appointments page)</span>';
     actionBtn.disabled = currentIndex !== 0;
   }
   actionBtn.classList.toggle('hidden', isCompleted);
@@ -214,12 +281,19 @@ function showAlreadyPaid(ref, receipt) {
   notice.classList.remove('hidden');
   notice.innerHTML = `
     <i class="fa-solid fa-circle-check"></i>
-    <span>Already paid (${escapeHtml(receipt.invoiceId)}).</span>
-    <a href="receipt.html?ref=${encodeURIComponent(ref)}&pid=${encodeURIComponent(receipt.paymentId)}" class="ml-auto font-bold underline">View Receipt</a>
+    <span>This visit is already paid (${escapeHtml(receipt.invoiceId)}).</span>
+    <a href="receipt.html?ref=${encodeURIComponent(ref)}&pid=${encodeURIComponent(receipt.paymentId)}" class="ml-auto font-bold underline">View receipt</a>
   `;
-  notice.className = 'bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800 flex items-center space-x-2';
+  notice.className = 'bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800 flex items-center gap-2';
   document.getElementById('btnSellProduct').disabled = true;
   document.getElementById('btnProcessPayment').disabled = true;
+  const completedText = document.querySelector('#serviceCompletedNotice span');
+  if (completedText) completedText.textContent = 'Service completed and paid';
+  // Swap the payment form for a "Paid" state so nobody collects twice.
+  document.getElementById('paymentForm').classList.add('hidden');
+  document.getElementById('paymentPaidState').classList.remove('hidden');
+  document.getElementById('paymentPaidReceiptLink').href =
+    `receipt.html?ref=${encodeURIComponent(ref)}&pid=${encodeURIComponent(receipt.paymentId)}`;
 }
 
 
@@ -229,28 +303,31 @@ function renderCart() {
   const rows = [];
 
   rows.push(`
-    <div class="flex justify-between items-start pt-3 first:pt-0">
-      <div class="pr-2">
-        <p class="font-bold text-slate-800">Services Availed</p>
-        <p class="text-[10px] text-gray-400">${escapeHtml(t.serviceName || 'No services listed')}</p>
+    <div class="flex justify-between items-start gap-4 px-6 py-4">
+      <div class="min-w-0">
+        <p class="font-semibold text-slate-800">Services</p>
+        <p class="text-sm text-slate-500">${escapeHtml(t.serviceName || 'No services listed')}</p>
       </div>
-      <span class="font-bold text-slate-800 shrink-0">${CashierApp.formatCurrency(t.price)}</span>
+      <span class="font-semibold text-slate-800 shrink-0">${CashierApp.formatCurrency(t.price)}</span>
     </div>
   `);
 
   state.cartProducts.forEach(p => {
     rows.push(`
-      <div class="stagger-item flex justify-between items-start pt-3" data-cart-product="${p.id}">
-        <div class="pr-2">
-          <p class="font-bold text-slate-800">${escapeHtml(p.name)}</p>
-          <div class="flex items-center space-x-2 mt-1">
-            <button type="button" class="cart-qty-btn bg-gray-100 hover:bg-gray-200 rounded w-5 h-5 text-xs font-bold" data-action="dec">-</button>
-            <span class="text-[11px] font-semibold">${p.qty}</span>
-            <button type="button" class="cart-qty-btn bg-gray-100 hover:bg-gray-200 rounded w-5 h-5 text-xs font-bold" data-action="inc">+</button>
-            <button type="button" class="cart-remove-btn text-rose-400 hover:text-rose-600 text-[10px] font-bold ml-2"><i class="fa-solid fa-trash"></i></button>
-          </div>
+      <div class="stagger-item flex justify-between items-center gap-4 px-6 py-4" data-cart-product="${p.id}">
+        <div class="min-w-0">
+          <p class="font-semibold text-slate-800">${escapeHtml(p.name)}</p>
+          <p class="text-sm text-slate-500">${CashierApp.formatCurrency(p.price)} each</p>
         </div>
-        <span class="font-bold text-slate-800 shrink-0">${CashierApp.formatCurrency(p.price * p.qty)}</span>
+        <div class="flex items-center gap-3 shrink-0">
+          <div class="flex items-center rounded-lg border border-gray-200">
+            <button type="button" class="cart-qty-btn w-8 h-8 font-bold text-slate-600 hover:bg-gray-100 rounded-l-lg" data-action="dec" aria-label="Decrease quantity">&minus;</button>
+            <span class="w-8 text-center text-sm font-semibold">${p.qty}</span>
+            <button type="button" class="cart-qty-btn w-8 h-8 font-bold text-slate-600 hover:bg-gray-100 rounded-r-lg" data-action="inc" aria-label="Increase quantity">+</button>
+          </div>
+          <span class="w-24 text-right font-semibold text-slate-800">${CashierApp.formatCurrency(p.price * p.qty)}</span>
+          <button type="button" class="cart-remove-btn text-slate-400 hover:text-rose-600" aria-label="Remove ${escapeHtml(p.name)}"><i class="fa-solid fa-xmark"></i></button>
+        </div>
       </div>
     `);
   });
@@ -275,28 +352,38 @@ function renderTotals() {
   document.getElementById('serviceChargesDisplay').textContent = CashierApp.formatCurrency(serviceCharges);
   document.getElementById('reservationReceivedRow').classList.toggle('hidden', reservationReceived <= 0);
   document.getElementById('reservationReceivedDisplay').textContent = '− ' + CashierApp.formatCurrency(reservationReceived);
-  document.getElementById('remainingBalanceDisplay').textContent = CashierApp.formatCurrency(remainingBalance);
   document.getElementById('productsChargeRow').classList.toggle('hidden', productsTotal <= 0);
   document.getElementById('subtotalDisplay').textContent = CashierApp.formatCurrency(productsTotal);
+  document.getElementById('tipRow').classList.toggle('hidden', tip <= 0);
   document.getElementById('tipDisplay').textContent = CashierApp.formatCurrency(tip);
   document.getElementById('totalDisplay').textContent = CashierApp.formatCurrency(total);
+  document.getElementById('payButtonLabel').textContent = 'Complete payment · ' + CashierApp.formatCurrency(total);
+  state.amountDue = total;
 
   updateCashChange(total);
 }
 
 /* Change = Cash Received - Amount Due. Checkout is blocked (button
-   disabled) while Cash Received is less than what's due. */
+   disabled) while Cash Received is less than what's due; the hint under
+   the button says why. */
 function updateCashChange(total) {
   const btn = document.getElementById('btnProcessPayment');
+  const hint = document.getElementById('payHint');
   const alreadyPaid = !document.getElementById('alreadyPaidNotice').classList.contains('hidden');
+  if (alreadyPaid) return;
+  if (!state.ticket) { btn.disabled = true; hint.textContent = ''; return; }
   if (state.selectedMethod !== 'Cash') {
-    if (!alreadyPaid) btn.disabled = false;
+    btn.disabled = false;
+    hint.textContent = `Collect ${CashierApp.formatCurrency(total)} via ${state.selectedMethod}, then complete.`;
     return;
   }
   const received = Number(document.getElementById('cashReceivedInput').value) || 0;
   const change = Math.max(0, received - total);
   document.getElementById('changeDueDisplay').textContent = CashierApp.formatCurrency(change);
-  if (!alreadyPaid) btn.disabled = received < total - 0.001;
+  btn.disabled = received < total - 0.001;
+  hint.textContent = btn.disabled
+    ? `Enter the cash received — at least ${CashierApp.formatCurrency(total)}.`
+    : (change > 0 ? `Give ${CashierApp.formatCurrency(change)} change.` : 'Exact amount received.');
 }
 
 
@@ -308,7 +395,8 @@ function openProductModal() {
 
 function renderProductList(query) {
   const q = query.toLowerCase().trim();
-  const items = state.branchInventory.filter(i => !q || i.name.toLowerCase().includes(q));
+  // Only retail items with a sale price can be sold; salon supplies (Professional Use) can't.
+  const items = state.branchInventory.filter(i => Number(i.price) > 0 && (!q || i.name.toLowerCase().includes(q)));
   const container = document.getElementById('productListContainer');
 
   if (!items.length) {
@@ -372,9 +460,15 @@ function removeCartProduct(productId) {
 }
 
 
-function setTip(value) {
+/* fromInput: typed into "Other" -- leave the field as typed. Otherwise a
+   preset chip was clicked, so clear the field and highlight that chip. */
+function setTip(value, fromInput = false) {
   state.tip = Math.max(0, Number(value) || 0);
-  document.getElementById('customTipInput').value = state.tip || '';
+  const input = document.getElementById('customTipInput');
+  if (!fromInput) input.value = '';
+  document.querySelectorAll('.tip-btn').forEach(btn => {
+    btn.classList.toggle('is-active', !input.value && Number(btn.dataset.tip) === state.tip);
+  });
   renderTotals();
 }
 
@@ -382,19 +476,14 @@ function selectPaymentMethod(method) {
   state.selectedMethod = method;
   document.querySelectorAll('.pay-method-card').forEach(card => {
     const isActive = card.dataset.method === method;
-    card.classList.toggle('border-2', isActive);
-    card.classList.toggle('border-amber-500', isActive);
-    card.classList.toggle('bg-amber-50/40', isActive);
-    card.classList.toggle('text-slate-900', isActive);
-    card.classList.toggle('border', !isActive);
-    card.classList.toggle('border-gray-200', !isActive);
-    card.classList.toggle('bg-white', !isActive);
-    card.classList.toggle('text-slate-600', !isActive);
+    card.classList.toggle('is-active', isActive);
+    card.setAttribute('aria-checked', String(isActive));
   });
 
   const isCash = method === 'Cash';
   document.getElementById('tipSection').classList.toggle('hidden', !isCash);
   document.getElementById('cashSection').classList.toggle('hidden', !isCash);
+  document.getElementById('methodNote').classList.toggle('hidden', isCash);
   if (!isCash) {
     setTip(0);
   } else {
@@ -478,8 +567,16 @@ function wireStaticEvents() {
   document.querySelectorAll('.tip-btn').forEach(btn => {
     btn.addEventListener('click', () => setTip(btn.dataset.tip));
   });
-  document.getElementById('customTipInput').addEventListener('input', (e) => setTip(e.target.value));
+  document.getElementById('customTipInput').addEventListener('input', (e) => setTip(e.target.value, true));
   document.getElementById('cashReceivedInput').addEventListener('input', renderTotals);
+  // Quick cash: "Exact" fills the amount due; the bill buttons fill that bill.
+  document.querySelectorAll('.cash-quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const amount = btn.dataset.exact ? (state.amountDue || 0) : Number(btn.dataset.amount);
+      document.getElementById('cashReceivedInput').value = amount.toFixed(2);
+      renderTotals();
+    });
+  });
 
   document.querySelectorAll('.pay-method-card').forEach(card => {
     card.addEventListener('click', () => selectPaymentMethod(card.dataset.method));

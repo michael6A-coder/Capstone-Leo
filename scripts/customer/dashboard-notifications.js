@@ -6,7 +6,8 @@ function customerNotificationsMixin() {
     pushToast(type, message) {
       const id = ++this.toastSeq;
       this.toasts.push({ id, type, message });
-      setTimeout(() => this.dismissToast(id), 4000);
+      // Long messages (e.g. refund/cancellation details) get more reading time.
+      setTimeout(() => this.dismissToast(id), Math.max(5000, Math.min(10000, message.length * 70)));
     },
     dismissToast(id) {
       this.toasts = this.toasts.filter(t => t.id !== id);
@@ -57,13 +58,15 @@ function customerNotificationsMixin() {
     // Maps a backend notification "type" (see backend/config/CustomerNotifier.php
     // -- BOOKING_SUBMITTED, PAYMENT_SUBMITTED, PAYMENT_VERIFIED,
     // PAYMENT_ATTENTION, CONFIRMED, REMINDER, RESCHEDULE, CANCELLED,
-    // COMPLETED) onto one of the existing bell icons, so real backend events
+    // COMPLETED, PAYMENT_FORFEITED, REFUND_DUE, PAYMENT_REFUNDED,
+    // WAITLIST_OPENING) onto one of the existing bell icons, so real backend events
     // render with the same look as the client-simulated ones above.
     serverNotificationIconFor(type) {
       const map = {
         BOOKING_SUBMITTED: 'success', PAYMENT_SUBMITTED: 'system', PAYMENT_VERIFIED: 'success',
         PAYMENT_ATTENTION: 'error', CONFIRMED: 'success', REMINDER: 'reminder',
-        RESCHEDULE: 'system', CANCELLED: 'error', COMPLETED: 'success'
+        RESCHEDULE: 'system', CANCELLED: 'error', COMPLETED: 'success',
+        PAYMENT_FORFEITED: 'error', REFUND_DUE: 'system', PAYMENT_REFUNDED: 'success', WAITLIST_OPENING: 'reminder'
       };
       return map[type] || 'system';
     },
@@ -102,7 +105,7 @@ function customerNotificationsMixin() {
       const now = new Date();
       const reminderThreshold = 24 * 60 * 60 * 1000;
       this.getUpcomingAppointments().forEach(appt => {
-        if (appt.reminderSent) return;
+        if (appt.reminderSent || !['Pending', 'Confirmed'].includes(appt.status)) return;
         const apptDateTime = parseApptDateTime(appt.date, appt.time);
         const timeDiff = apptDateTime.getTime() - now.getTime();
         if (timeDiff > 0 && timeDiff <= reminderThreshold) {

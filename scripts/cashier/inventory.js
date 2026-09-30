@@ -197,7 +197,9 @@ async function triggerEod() {
 
   const result = await CashierApp.post('closeEod.php', { branchId: state.branch });
   if (result.success) {
-    CashierApp.toast(`Business day closed: ${result.invoiceCount} transactions, ${CashierApp.formatCurrency(result.grossRevenue)} gross.`, 'success');
+    const clockedOut = result.clockedOut || [];
+    CashierApp.toast(`Business day closed: ${result.invoiceCount} transactions, ${CashierApp.formatCurrency(result.grossRevenue)} gross.`
+      + (clockedOut.length ? ` Clocked out (didn't sign out): ${clockedOut.join(', ')}.` : ''), 'success');
     await refreshData();
   } else {
     CashierApp.toast(result.message || 'Failed to close the business day.', 'error');

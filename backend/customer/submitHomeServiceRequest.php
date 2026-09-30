@@ -16,9 +16,11 @@
 require_once '../config/cors.php';
 require_once '../config/session.php';
 require_once '../config/database.php';
+require_once '../config/AuditLog.php';
 require_once '../config/HomeServiceRequest.php';
 
 sendCorsHeaders();
+AuditLog::captureRequest();
 header('Content-Type: application/json');
 
 if (!isLoggedIn() || ($_SESSION['user_role'] ?? null) !== 'Customer') {
@@ -98,13 +100,13 @@ try {
 
     $ins = $pdo->prepare('
         INSERT INTO home_service_requests (
-            customer_id, address, event_type, wedding_package, preferred_date, preferred_time,
+            customer_id, contact_email, address, event_type, wedding_package, preferred_date, preferred_time,
             requests, number_of_clients, terms_accepted_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        VALUES (?, (SELECT email FROM users WHERE id = ?), ?, ?, ?, ?, ?, ?, ?, NOW())
     ');
     $ins->execute([
-        $customerId, $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $preferredDate, $preferredTime, $fullRequests, (int) $clients,
+        $customerId, $_SESSION['user_id'], $address, $eventType, $eventType === 'Wedding' ? $weddingPackage : null, $preferredDate, $preferredTime, $fullRequests, (int) $clients,
     ]);
     $requestId = $pdo->lastInsertId();
     $refStmt = $pdo->prepare('SELECT reference_code FROM home_service_requests WHERE id = ?');

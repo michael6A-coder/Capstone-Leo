@@ -5,15 +5,19 @@ $service = fn($id, $price, $requirement) => ['id' => $id, 'service_name' => 'Tes
 foreach ([
     [[$service(1, '600.00', '50% Down Payment')], 600, 300, 300],
     [[$service(1, '1000.00', 'Full Payment')], 1000, 1000, 0],
-    [[$service(1, '50.00', '50% Down Payment')], 50, 25, 25],
+    // Minimum ₱100 deposit (ReservationPayment::MIN_DEPOSIT), capped at the booking total.
+    [[$service(1, '50.00', '50% Down Payment')], 50, 50, 0],
+    [[$service(1, '150.00', '50% Down Payment')], 150, 100, 50],
     [[$service(1, '600.00', '50% Down Payment'), $service(2, '1000.00', 'Full Payment')], 1600, 1300, 300],
-    [[$service(1, '99.99', '50% Down Payment')], 99.99, 50, 49.99],
+    [[$service(1, '99.99', '50% Down Payment')], 99.99, 99.99, 0],
     [[$service(1, '0.00', 'Full Payment')], 0, 0, 0],
 ] as [$lines, $total, $due, $balance]) {
     $quote = ReservationPayment::quote($lines);
     check(abs($quote['serviceTotal'] - $total) < 0.001 && abs($quote['amountDue'] - $due) < 0.001
         && abs($quote['remainingBalance'] - $balance) < 0.001, 'Reservation math failed: ' . json_encode($quote));
 }
+$fullPlan = ReservationPayment::quote([$service(1, '600.00', '50% Down Payment')], 0, false, 'full');
+check($fullPlan['amountDue'] == 600 && $fullPlan['remainingBalance'] == 0 && $fullPlan['paymentPlan'] === 'full', 'Full payment plan failed');
 $discounted = ReservationPayment::quote([$service(1, 600, '50% Down Payment'), $service(2, 1000, 'Full Payment')], 1600, true);
 check($discounted['serviceTotal'] == 1440 && $discounted['amountDue'] == 1170 && $discounted['remainingBalance'] == 270, 'Discount allocation failed');
 
