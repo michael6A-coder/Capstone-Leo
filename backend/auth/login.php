@@ -119,6 +119,10 @@ try {
     // On successful login, clear any previous failed attempts from this IP.
     $login_limiter->clear();
 
+    // Move from the temporary login session into this role's own session
+    // cookie, so other accounts logged in other tabs stay logged in.
+    switchSessionPortal(getRolePortal($user['role_name']));
+
     // Regenerate the session ID to prevent session fixation attacks.
     regenerateSession();
 

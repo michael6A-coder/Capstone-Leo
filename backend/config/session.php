@@ -16,6 +16,63 @@
 
 require_once __DIR__ . '/url.php';
 
+/**
+ * Each portal (admin / cashier / staff / customer) gets its own session
+ * cookie, so logging into a second account in another tab of the same
+ * browser no longer overwrites the first one. Previously there was a single
+ * PHPSESSID shared by every page: log in as a Customer in one tab and the
+ * Admin tab would be bounced back to the login page on its next refresh.
+ *
+ * The portal is worked out from the endpoint's own folder where that is
+ * unambiguous, otherwise from the page that made the request (Referer),
+ * e.g. logout.php called from pages/admin/*.html.
+ */
+const SESSION_PORTALS = [
+    'admin'    => 'LEO_SESS_ADMIN',
+    'cashier'  => 'LEO_SESS_CASHIER',
+    'staff'    => 'LEO_SESS_STAFF',
+    'customer' => 'LEO_SESS_CUSTOMER',
+    // Throwaway session used only while login.php authenticates; the user
+    // is then moved into their role's portal session (see switchSessionPortal()).
+    'login'    => 'LEO_SESS_LOGIN',
+];
+
+function getRolePortal(string $role): string
+{
+    $portals = ['Admin' => 'admin', 'Cashier' => 'cashier', 'Staff' => 'staff', 'Customer' => 'customer'];
+    return $portals[$role] ?? 'customer';
+}
+
+function detectSessionPortal(): string
+{
+    $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+    if (preg_match('#/backend/([^/]+)/([^/]+)$#', $scriptName, $m)) {
+        if ($m[1] === 'auth' && $m[2] === 'login.php') {
+            return 'login';
+        }
+        $folders = [
+            'admin' => 'admin', 'cashier' => 'cashier', 'customer' => 'customer',
+            'employee' => 'staff', 'appointment' => 'staff', 'inventory' => 'staff',
+            'public' => 'customer',
+        ];
+        if (isset($folders[$m[1]])) {
+            return $folders[$m[1]];
+        }
+    }
+
+    // Shared endpoints (e.g. logout.php): explicit ?portal=, else the calling
+    // page, e.g. pages/admin/dashboard.html -> admin.
+    $requested = $_GET['portal'] ?? '';
+    if (is_string($requested) && $requested !== 'login' && isset(SESSION_PORTALS[$requested])) {
+        return $requested;
+    }
+    $referer = (string) parse_url($_SERVER['HTTP_REFERER'] ?? '', PHP_URL_PATH);
+    if (preg_match('#/pages/(admin|cashier|staff|customer|payment)/#', $referer, $m)) {
+        return $m[1] === 'payment' ? 'customer' : $m[1];
+    }
+    return 'customer';
+}
+
 // We configure session settings before starting it. This is a security best practice.
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -50,7 +107,27 @@ if (session_status() === PHP_SESSION_NONE) {
         'samesite' => 'Strict' // Prevents the browser from sending the cookie with cross-site requests (CSRF protection).
     ]);
 
+    session_name(SESSION_PORTALS[detectSessionPortal()]);
     session_start();
+}
+
+/**
+ * Called by login.php once the user's role is known: discards the temporary
+ * login session and continues in that role's own portal session, leaving any
+ * other portal (e.g. a Customer logged in in another tab) untouched.
+ */
+function switchSessionPortal(string $portal): void
+{
+    $_SESSION = [];
+    session_destroy();
+    $params = session_get_cookie_params();
+    setcookie(SESSION_PORTALS['login'], '', time() - 42000,
+        $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+
+    session_name(SESSION_PORTALS[$portal]);
+    session_start();
+    // Drop whatever account was previously logged into this portal.
+    $_SESSION = [];
 }
 
 

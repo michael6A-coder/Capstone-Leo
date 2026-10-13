@@ -21,6 +21,10 @@ require_once '../config/database.php';
 require_once '../config/Scheduling.php';
 require_once '../config/PayMongo.php';
 
+// php.ini on this XAMPP install is Europe/Berlin; "no slots in the past"
+// must be judged on the salon's clock.
+date_default_timezone_set('Asia/Manila');
+
 sendCorsHeaders();
 header('Content-Type: application/json');
 
@@ -69,8 +73,10 @@ try {
     $allSlots = Scheduling::timeSlots($branchKey);
 
     $slots = array_map(function ($slot) use ($pdo, $branchId, $branchKey, $date, $durationMinutes) {
-        $slotDateTime = date('Y-m-d H:i:s', strtotime("$date $slot"));
-        $available = !Scheduling::isOutsideOperatingHours($slotDateTime, $durationMinutes, $branchKey)
+        $slotTimestamp = strtotime("$date $slot");
+        $slotDateTime = date('Y-m-d H:i:s', $slotTimestamp);
+        $available = $slotTimestamp > time()
+            && !Scheduling::isOutsideOperatingHours($slotDateTime, $durationMinutes, $branchKey)
             && !Scheduling::branchWindowIsFull($pdo, $branchId, $slotDateTime, $durationMinutes);
         return [
             'time' => $slot,
