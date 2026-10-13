@@ -1,5 +1,11 @@
 <?php
 
+// Every endpoint loads this file, so set the app timezone here. Without it,
+// files that write expiries (e.g. OTP codes) use php.ini's timezone while
+// files that call date_default_timezone_set('Asia/Manila') compare against
+// a different clock, making codes look expired the moment they're issued.
+date_default_timezone_set('Asia/Manila');
+
 /**
  * Database Connection Class
  *

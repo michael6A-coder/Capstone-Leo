@@ -20,6 +20,10 @@ require_once '../config/PayMongo.php';
 require_once '../config/url.php';
 require_once '../config/CancellationPolicy.php';
 
+// php.ini on this XAMPP install is Europe/Berlin; "no slots in the past"
+// must be judged on the salon's clock.
+date_default_timezone_set('Asia/Manila');
+
 sendCorsHeaders();
 AuditLog::captureRequest();
 header('Content-Type: application/json');
@@ -120,6 +124,11 @@ try {
     if ($appointmentTimestamp === false) {
         http_response_code(400);
         echo json_encode(['success' => false, 'message' => 'Invalid date or time selected.']);
+        exit();
+    }
+    if ($appointmentTimestamp <= time()) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'That time has already passed. Please pick a later slot.']);
         exit();
     }
     $appointmentDateTime = date('Y-m-d H:i:s', $appointmentTimestamp);
